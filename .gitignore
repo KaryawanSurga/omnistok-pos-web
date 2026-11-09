@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+.vercel/
+
+# Temporary and extraction files
+check_classes.py
+extracted_ui/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and cache
+*.log
+.phpunit.result.cache
