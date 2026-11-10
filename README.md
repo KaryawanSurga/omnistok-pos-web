@@ -49,9 +49,10 @@ omnistok-web/
 │   └── MutasiStokController.php # [FW-SC01] Kontroler Mutasi Stok & Riwayat
 ├── css/
 │   ├── style.css            # Stylesheet tema antarmuka hijau toska (#0d7a74)
-│   └── kelola_diskon.css    # Gaya khusus halaman Kelola Diskon (dimuat kondisional)
+│   └── crud_shared.css      # Gaya bersama halaman CRUD (Diskon, Akun, Produk)
 ├── database/
 │   ├── schema.sql           # Skrip DDL Lengkap (MySQL InnoDB)
+│   ├── migration_akun_mysql.sql   # Migrasi kolom nama_lengkap akun untuk MySQL lama
 │   ├── migration_diskon_mysql.sql # Migrasi kolom promo untuk database MySQL lama
 │   └── omnistok_local.sqlite# Basis data SQLite lokal & serverless siap pakai
 ├── layout/
