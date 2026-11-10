@@ -2,11 +2,10 @@
 /**
  * OMNISTOK - Portal Utama & Dashboard Integrasi
  * Praktikum Rekayasa Sistem Informasi - Kelompok 6 (Kelas SI-G)
- * Disinkronkan 100% dengan Modul 2 SDD dan Modul 1 SRS
  */
 
 require_once __DIR__ . '/config/auth.php';
-auth_require_login();
+auth_require_page(basename(__FILE__));
 
 $db = Database::getInstance();
 

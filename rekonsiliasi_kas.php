@@ -8,7 +8,7 @@
 
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/controllers/TransaksiController.php';
-auth_require_login();
+auth_require_page(basename(__FILE__));
 
 $db  = Database::getInstance();
 $trx = new TransaksiController();

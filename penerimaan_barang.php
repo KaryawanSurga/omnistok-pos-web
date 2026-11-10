@@ -8,7 +8,7 @@
  */
 
 require_once __DIR__ . '/config/auth.php';
-auth_require_login();
+auth_require_page(basename(__FILE__));
 
 require_once __DIR__ . '/controllers/PenerimaanController.php';
 

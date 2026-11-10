@@ -26,6 +26,14 @@ if ($authUser) {
 }
 
 $canManageAccounts = function_exists('auth_is_owner') ? auth_is_owner() : true;
+
+// Notifikasi hanya menampilkan tautan yang boleh dibuka oleh peran aktif
+$notifVisible = 0;
+if (function_exists('auth_can')) {
+    $notifVisible += auth_can('daftar_produk.php') ? 1 : 0;
+    $notifVisible += auth_can('retur_barang.php') ? 1 : 0;
+    $notifVisible += auth_can('laporan_mutasi.php') ? 1 : 0;
+}
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -74,80 +82,106 @@ $canManageAccounts = function_exists('auth_is_owner') ? auth_is_owner() : true;
             </div>
 
             <!-- SECTION 2: PRODUCTS -->
+            <?php if (auth_can('daftar_produk.php') || auth_can('kelola_diskon.php')): ?>
             <div class="menu-section-group <?= in_array($activePage, ['daftar_produk', 'kelola_diskon']) ? 'active-section' : ''; ?>" id="sec-products">
                 <button class="menu-section-header" onclick="toggleSection('sec-products')">
                     <span>PRODUCTS</span>
                     <span class="chevron-icon">▾</span>
                 </button>
                 <div class="menu-section-content">
+                    <?php if (auth_can('daftar_produk.php')): ?>
                     <a href="daftar_produk.php" class="menu-item <?= ($activePage === 'daftar_produk') ? 'active' : ''; ?>">
                         <span class="menu-ico">▤</span>
                         <span class="menu-text">Daftar Produk</span>
                     </a>
+                    <?php endif; ?>
+                    <?php if (auth_can('kelola_diskon.php')): ?>
                     <a href="kelola_diskon.php" class="menu-item <?= ($activePage === 'kelola_diskon') ? 'active' : ''; ?>">
                         <span class="menu-ico">%</span>
                         <span class="menu-text">Kelola Diskon</span>
                     </a>
+                    <?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
 
             <!-- SECTION 3: INVENTORY -->
+            <?php if (auth_can('penerimaan_barang.php') || auth_can('penyesuaian_stok.php') || auth_can('retur_barang.php')): ?>
             <div class="menu-section-group <?= in_array($activePage, ['penerimaan_barang', 'penyesuaian_stok', 'retur_barang']) ? 'active-section' : ''; ?>" id="sec-inventory">
                 <button class="menu-section-header" onclick="toggleSection('sec-inventory')">
                     <span>INVENTORY</span>
                     <span class="chevron-icon">▾</span>
                 </button>
                 <div class="menu-section-content">
+                    <?php if (auth_can('penerimaan_barang.php')): ?>
                     <a href="penerimaan_barang.php" class="menu-item <?= ($activePage === 'penerimaan_barang') ? 'active' : ''; ?>">
                         <span class="menu-ico">⇲</span>
                         <span class="menu-text">Penerimaan Barang</span>
                     </a>
+                    <?php endif; ?>
+                    <?php if (auth_can('penyesuaian_stok.php')): ?>
                     <a href="penyesuaian_stok.php" class="menu-item <?= ($activePage === 'penyesuaian_stok') ? 'active' : ''; ?>">
                         <span class="menu-ico">≚</span>
                         <span class="menu-text">Penyesuaian Stok</span>
                     </a>
+                    <?php endif; ?>
+                    <?php if (auth_can('retur_barang.php')): ?>
                     <a href="retur_barang.php" class="menu-item <?= ($activePage === 'retur_barang') ? 'active' : ''; ?>">
                         <span class="menu-ico">↩</span>
                         <span class="menu-text">Retur Barang</span>
                     </a>
+                    <?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
 
             <!-- SECTION 4: POS & SALES -->
+            <?php if (auth_can('transaksi_pos.php') || auth_can('rekonsiliasi_kas.php')): ?>
             <div class="menu-section-group <?= in_array($activePage, ['transaksi_pos', 'rekonsiliasi_kas']) ? 'active-section' : ''; ?>" id="sec-pos">
                 <button class="menu-section-header" onclick="toggleSection('sec-pos')">
                     <span>POS & SALES</span>
                     <span class="chevron-icon">▾</span>
                 </button>
                 <div class="menu-section-content">
+                    <?php if (auth_can('transaksi_pos.php')): ?>
                     <a href="transaksi_pos.php" class="menu-item <?= ($activePage === 'transaksi_pos') ? 'active' : ''; ?>">
                         <span class="menu-ico">🛒</span>
                         <span class="menu-text">Transaksi Penjualan</span>
                     </a>
+                    <?php endif; ?>
+                    <?php if (auth_can('rekonsiliasi_kas.php')): ?>
                     <a href="rekonsiliasi_kas.php" class="menu-item <?= ($activePage === 'rekonsiliasi_kas') ? 'active' : ''; ?>">
                         <span class="menu-ico">🖩</span>
                         <span class="menu-text">Rekonsiliasi Kas</span>
                     </a>
+                    <?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
 
             <!-- SECTION 5: REPORTS -->
+            <?php if (auth_can('laporan_penjualan.php') || auth_can('laporan_mutasi.php')): ?>
             <div class="menu-section-group <?= in_array($activePage, ['laporan_penjualan', 'laporan_mutasi']) ? 'active-section' : ''; ?>" id="sec-reports">
                 <button class="menu-section-header" onclick="toggleSection('sec-reports')">
                     <span>REPORTS</span>
                     <span class="chevron-icon">▾</span>
                 </button>
                 <div class="menu-section-content">
+                    <?php if (auth_can('laporan_penjualan.php')): ?>
                     <a href="laporan_penjualan.php" class="menu-item <?= ($activePage === 'laporan_penjualan') ? 'active' : ''; ?>">
                         <span class="menu-ico">📊</span>
                         <span class="menu-text">Laporan Penjualan & Laba</span>
                     </a>
+                    <?php endif; ?>
+                    <?php if (auth_can('laporan_mutasi.php')): ?>
                     <a href="laporan_mutasi.php" class="menu-item <?= ($activePage === 'laporan_mutasi') ? 'active' : ''; ?>">
                         <span class="menu-ico">📋</span>
                         <span class="menu-text">Laporan Mutasi Stok</span>
                     </a>
+                    <?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
 
             <!-- SECTION 6: USER & SETTINGS (khusus Pemilik Toko) -->
             <?php if ($canManageAccounts): ?>
@@ -195,17 +229,19 @@ $canManageAccounts = function_exists('auth_is_owner') ? auth_is_owner() : true;
                 </div>
 
                 <!-- NOTIFICATION BELL -->
+                <?php if ($notifVisible > 0): ?>
                 <div class="notification-wrapper">
                     <button class="notification-btn" onclick="toggleNotificationDropdown()" title="Notifikasi Sistem">
                         <span class="bell-icon">🔔</span>
-                        <span class="notif-badge">3</span>
+                        <span class="notif-badge"><?= $notifVisible; ?></span>
                     </button>
                     <div class="notification-dropdown" id="notifDropdown">
                         <div class="notif-header">
-                            <strong>Pemberitahuan Sistem (3)</strong>
+                            <strong>Pemberitahuan Sistem (<?= $notifVisible; ?>)</strong>
                             <span class="pill pill-teal" style="font-size: 0.68rem;">Live POS</span>
                         </div>
                         <div class="notif-list">
+                            <?php if (auth_can('daftar_produk.php')): ?>
                             <a href="daftar_produk.php" class="notif-item">
                                 <span class="notif-dot warning"></span>
                                 <div>
@@ -213,6 +249,8 @@ $canManageAccounts = function_exists('auth_is_owner') ? auth_is_owner() : true;
                                     <div class="notif-desc">1 SKU (PRD-002) memiliki margin jual &lt; 8% dari modal.</div>
                                 </div>
                             </a>
+                            <?php endif; ?>
+                            <?php if (auth_can('retur_barang.php')): ?>
                             <a href="retur_barang.php" class="notif-item">
                                 <span class="notif-dot danger"></span>
                                 <div>
@@ -220,6 +258,8 @@ $canManageAccounts = function_exists('auth_is_owner') ? auth_is_owner() : true;
                                     <div class="notif-desc">2 Unit Beras Rojolele rusak kemasan siap diretur ke vendor.</div>
                                 </div>
                             </a>
+                            <?php endif; ?>
+                            <?php if (auth_can('laporan_mutasi.php')): ?>
                             <a href="laporan_mutasi.php" class="notif-item">
                                 <span class="notif-dot info"></span>
                                 <div>
@@ -227,9 +267,11 @@ $canManageAccounts = function_exists('auth_is_owner') ? auth_is_owner() : true;
                                     <div class="notif-desc">PO-202610-001 telah berhasil dibukukan ke saldo rak gudang.</div>
                                 </div>
                             </a>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
+                <?php endif; ?>
 
                 <!-- USER PROFILE -->
                 <div class="user-profile-wrapper">
