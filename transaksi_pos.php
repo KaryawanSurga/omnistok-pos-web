@@ -7,23 +7,60 @@
  */
 
 require_once __DIR__ . '/config/database.php';
-$db = Database::getInstance();
+require_once __DIR__ . '/controllers/TransaksiController.php';
 
-$message = null;
-$messageType = 'info';
-$strukData = null;
+$db  = Database::getInstance();
+$trx = new TransaksiController();
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Initial cart setup
+$message = null;
+$messageType = 'info';
+$strukData = null;
+
+// Pesan hasil aksi sebelumnya (pola Post/Redirect/Get agar transaksi tidak tersimpan ganda)
+if (!empty($_SESSION['pos_flash'])) {
+    $message = $_SESSION['pos_flash']['message'];
+    $messageType = $_SESSION['pos_flash']['type'];
+    unset($_SESSION['pos_flash']);
+}
+
+// Struk disimpan di session supaya tetap tampil setelah redirect / refresh
+if (!empty($_SESSION['pos_struk'])) {
+    $strukData = $_SESSION['pos_struk'];
+    unset($_SESSION['pos_struk']);
+}
+
+// Keranjang awal diambil dari master produk agar harga & stok selalu sinkron dengan database
 if (!isset($_SESSION['pos_cart'])) {
-    $_SESSION['pos_cart'] = [
-        101 => ['id_produk' => 101, 'sku' => 'PRD-001', 'nama' => 'Beras Rojolele 5 kg', 'harga' => 65000, 'qty' => 1, 'diskon' => 0, 'stok' => 48],
-        102 => ['id_produk' => 102, 'sku' => 'PRD-002', 'nama' => 'Minyak Goreng 2 L', 'harga' => 30000, 'qty' => 1, 'diskon' => 2000, 'stok' => 30],
-        103 => ['id_produk' => 103, 'sku' => 'PRD-003', 'nama' => 'Gula Pasir Kristal 1 kg', 'harga' => 15000, 'qty' => 1, 'diskon' => 0, 'stok' => 40],
-    ];
+    $_SESSION['pos_cart'] = [];
+    $produkAwal = $db->query("
+        SELECT p.*, COALESCE(SUM(s.jumlah_stok), 0) AS stok
+        FROM produk p
+        LEFT JOIN stok s ON p.id_produk = s.id_produk
+        GROUP BY p.id_produk
+        ORDER BY p.id_produk ASC
+        LIMIT 3
+    ")->fetchAll();
+
+    foreach ($produkAwal as $p) {
+        $stokAwal = (int) $p['stok'];
+        if ($stokAwal <= 0) {
+            continue;
+        }
+        $_SESSION['pos_cart'][$p['id_produk']] = [
+            'id_produk'   => (int) $p['id_produk'],
+            'sku'         => 'PRD-00' . $p['id_produk'],
+            'nama'        => $p['nama_produk'],
+            'harga'       => (float) $p['harga_jual'],
+            'harga_modal' => (float) $p['harga_modal'],
+            'qty'         => 1,
+            'diskon'      => 0,
+            'stok'        => $stokAwal,
+        ];
+    }
 }
 
 // Handle cart actions
@@ -31,32 +68,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $act = $_POST['action'];
 
     if ($act === 'add_item') {
-        $pId = intval($_POST['id_produk']);
-        $p = $db->query("SELECT p.*, COALESCE(s.jumlah_stok, 50) as stok FROM produk p LEFT JOIN stok s ON p.id_produk = s.id_produk WHERE p.id_produk = {$pId}")->fetch();
+        $pId = intval($_POST['id_produk'] ?? 0);
+        $stmtP = $db->prepare("
+            SELECT p.*, COALESCE(SUM(s.jumlah_stok), 0) AS stok
+            FROM produk p
+            LEFT JOIN stok s ON p.id_produk = s.id_produk
+            WHERE p.id_produk = ?
+            GROUP BY p.id_produk
+        ");
+        $stmtP->execute([$pId]);
+        $p = $stmtP->fetch();
+
         if ($p) {
-            if (isset($_SESSION['pos_cart'][$pId])) {
-                $_SESSION['pos_cart'][$pId]['qty'] += 1;
+            $stokTersedia = (int) $p['stok'];
+            $qtySekarang  = isset($_SESSION['pos_cart'][$pId]) ? (int) $_SESSION['pos_cart'][$pId]['qty'] : 0;
+
+            if ($qtySekarang + 1 > $stokTersedia) {
+                $message = "Stok '{$p['nama_produk']}' tidak mencukupi (tersedia {$stokTersedia} pcs).";
+                $messageType = 'warning';
             } else {
-                $_SESSION['pos_cart'][$pId] = [
-                    'id_produk' => $p['id_produk'],
-                    'sku' => 'PRD-00' . $p['id_produk'],
-                    'nama' => $p['nama_produk'],
-                    'harga' => floatval($p['harga_jual']),
-                    'qty' => 1,
-                    'diskon' => 0,
-                    'stok' => intval($p['stok'])
-                ];
+                if (isset($_SESSION['pos_cart'][$pId])) {
+                    $_SESSION['pos_cart'][$pId]['qty']      = $qtySekarang + 1;
+                    $_SESSION['pos_cart'][$pId]['stok']     = $stokTersedia;
+                    $_SESSION['pos_cart'][$pId]['harga']    = (float) $p['harga_jual'];
+                    $_SESSION['pos_cart'][$pId]['harga_modal'] = (float) $p['harga_modal'];
+                } else {
+                    $_SESSION['pos_cart'][$pId] = [
+                        'id_produk'   => (int) $p['id_produk'],
+                        'sku'         => 'PRD-00' . $p['id_produk'],
+                        'nama'        => $p['nama_produk'],
+                        'harga'       => (float) $p['harga_jual'],
+                        'harga_modal' => (float) $p['harga_modal'],
+                        'qty'         => 1,
+                        'diskon'      => 0,
+                        'stok'        => $stokTersedia,
+                    ];
+                }
+                $message = "Produk '{$p['nama_produk']}' berhasil ditambahkan ke keranjang belanja!";
+                $messageType = 'success';
             }
-            $message = "Produk '{$p['nama_produk']}' berhasil ditambahkan ke keranjang belanja!";
-            $messageType = "success";
+        } else {
+            $message = 'Produk tidak ditemukan.';
+            $messageType = 'danger';
         }
     } elseif ($act === 'update_qty') {
-        $pId = intval($_POST['id_produk']);
-        $delta = intval($_POST['delta']);
+        $pId = intval($_POST['id_produk'] ?? 0);
+        $delta = intval($_POST['delta'] ?? 0);
         if (isset($_SESSION['pos_cart'][$pId])) {
-            $_SESSION['pos_cart'][$pId]['qty'] += $delta;
-            if ($_SESSION['pos_cart'][$pId]['qty'] <= 0) {
+            $qtyBaru = (int) $_SESSION['pos_cart'][$pId]['qty'] + $delta;
+            $stok    = (int) ($_SESSION['pos_cart'][$pId]['stok'] ?? 0);
+
+            if ($qtyBaru <= 0) {
                 unset($_SESSION['pos_cart'][$pId]);
+            } elseif ($qtyBaru > $stok) {
+                $_SESSION['pos_cart'][$pId]['qty'] = $stok;
+                $message = "Jumlah '{$_SESSION['pos_cart'][$pId]['nama']}' dibatasi sesuai stok tersedia ({$stok} pcs).";
+                $messageType = 'warning';
+            } else {
+                $_SESSION['pos_cart'][$pId]['qty'] = $qtyBaru;
             }
         }
     } elseif ($act === 'delete_item') {
@@ -67,9 +136,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $message = "Keranjang transaksi berhasil dikosongkan.";
         $messageType = "info";
     } elseif ($act === 'checkout') {
-        $metode = $_POST['metode'];
-        $bayar = floatval($_POST['nominal_bayar']);
-        
+        $metode = (isset($_POST['metode']) && strtoupper($_POST['metode']) === 'QRIS') ? 'QRIS' : 'Tunai';
+
         $subtotal = 0;
         $totalDiskon = 0;
         foreach ($_SESSION['pos_cart'] as $item) {
@@ -77,64 +145,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $totalDiskon += ($item['diskon'] * $item['qty']);
         }
         $grandTotal = max(0, $subtotal - $totalDiskon);
-        $kembalian = max(0, $bayar - $grandTotal);
 
-        try {
-            $db->beginTransaction();
-            $stmt = $db->prepare("
-                INSERT INTO transaksi (id_akun, tanggal_transaksi, total_harga)
-                VALUES (2, datetime('now'), ?)
-            ");
-            if ($db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql') {
-                $stmt = $db->prepare("
-                    INSERT INTO transaksi (id_akun, tanggal_transaksi, total_harga)
-                    VALUES (2, NOW(), ?)
-                ");
+        // QRIS selalu dibayar lunas sebesar total tagihan; tunai memakai nominal yang diisi kasir
+        $bayar = ($metode === 'QRIS') ? $grandTotal : floatval($_POST['nominal_bayar'] ?? 0);
+
+        if (empty($_SESSION['pos_cart'])) {
+            $message = 'Keranjang transaksi masih kosong!';
+            $messageType = 'danger';
+        } else {
+            // Akun kasir default; bila tidak ada, gunakan akun pertama yang tersedia
+            $idKasir = (int) $db->query("SELECT id_akun FROM akun WHERE email = 'kasir@omnistok.com' LIMIT 1")->fetchColumn();
+            if ($idKasir <= 0) {
+                $idKasir = (int) $db->query("SELECT MIN(id_akun) FROM akun")->fetchColumn();
             }
-            $stmt->execute([$grandTotal]);
-            $trxId = $db->lastInsertId();
 
-            // Insert detail & reduce stock
-            $stmtDet = $db->prepare("
-                INSERT INTO detail_penjualan (id_transaksi, id_produk, jumlah, harga_satuan, subtotal, hpp)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ");
-            $stmtStok = $db->prepare("UPDATE stok SET jumlah_stok = jumlah_stok - ? WHERE id_produk = ?");
-            $stmtMutasi = $db->prepare("
-                INSERT INTO mutasi_stok (id_produk, jenis_mutasi, jumlah, alasan, tanggal_mutasi)
-                VALUES (?, 'Keluar', ?, ?, datetime('now'))
-            ");
-
+            $items = [];
+            $itemsStruk = [];
             foreach ($_SESSION['pos_cart'] as $it) {
-                $itemSub = ($it['harga'] - $it['diskon']) * $it['qty'];
-                $hpp = $it['harga'] * 0.8;
-                $stmtDet->execute([$trxId, $it['id_produk'], $it['qty'], $it['harga'], $itemSub, $hpp]);
-                $stmtStok->execute([$it['qty'], $it['id_produk']]);
-                $stmtMutasi->execute([$it['id_produk'], $it['qty'], "Penjualan POS Trx #{$trxId}"]);
+                $items[] = [
+                    'id_produk'   => $it['id_produk'],
+                    'qty'         => $it['qty'],
+                    'harga_jual'  => $it['harga'],
+                    'harga_modal' => $it['harga_modal'] ?? null,
+                    'diskon'      => $it['diskon'] ?? 0,
+                ];
+                $itemsStruk[] = $it;
             }
 
-            $db->commit();
+            $hasil = $trx->simpan_transaksi($idKasir, $items, $grandTotal, $metode, $bayar);
 
-            $strukData = [
-                'trx_id' => 'TRX-' . date('Ymd') . '-' . str_pad($trxId, 4, '0', STR_PAD_LEFT),
-                'waktu' => date('d/m/Y H:i:s'),
-                'kasir' => 'Budi Santoso',
-                'metode' => $metode,
-                'items' => $_SESSION['pos_cart'],
-                'subtotal' => $subtotal,
-                'diskon' => $totalDiskon,
-                'total' => $grandTotal,
-                'bayar' => $bayar,
-                'kembalian' => $kembalian
-            ];
+            if ($hasil['status']) {
+                $_SESSION['pos_struk'] = [
+                    'trx_id'    => 'TRX-' . date('Ymd') . '-' . str_pad($hasil['id_transaksi'], 4, '0', STR_PAD_LEFT),
+                    'waktu'     => date('d/m/Y H:i:s'),
+                    'kasir'     => 'Kasir Utama',
+                    'metode'    => $hasil['metode_bayar'],
+                    'items'     => $itemsStruk,
+                    'subtotal'  => $subtotal,
+                    'diskon'    => $totalDiskon,
+                    'total'     => $grandTotal,
+                    'bayar'     => $hasil['nominal_bayar'],
+                    'kembalian' => $hasil['kembalian'],
+                ];
+                $_SESSION['pos_cart'] = [];
+                $_SESSION['pos_flash'] = [
+                    'message' => 'Transaksi POS berhasil diproses dan struk belanja telah tercetak!',
+                    'type'    => 'success',
+                ];
 
-            $_SESSION['pos_cart'] = [];
-            $message = "Transaksi POS berhasil diproses dan struk belanja telah tercetak!";
-            $messageType = "success";
-        } catch (Exception $e) {
-            $db->rollBack();
-            $message = "Gagal memproses transaksi: " . $e->getMessage();
-            $messageType = "danger";
+                header('Location: transaksi_pos.php');
+                exit;
+            }
+
+            $message = $hasil['message'];
+            $messageType = 'danger';
         }
     }
 }
@@ -481,6 +545,7 @@ function switchPaymentTab(tab) {
     const pTunai = document.getElementById('panelTunai');
     const pQris = document.getElementById('panelQris');
     const inpMetode = document.getElementById('inputMetode');
+    const inpNominal = document.getElementById('nominalBayar');
 
     if (tab === 'tunai') {
         tBtn.className = 'btn btn-primary';
@@ -488,12 +553,20 @@ function switchPaymentTab(tab) {
         pTunai.style.display = 'block';
         pQris.style.display = 'none';
         inpMetode.value = 'Tunai';
+        inpNominal.disabled = false;
+        if (parseFloat(inpNominal.value) < grandTotal) {
+            inpNominal.value = grandTotal;
+        }
+        hitungKembalian();
     } else {
         tBtn.className = 'btn btn-secondary';
         qBtn.className = 'btn btn-primary';
         pTunai.style.display = 'none';
         pQris.style.display = 'block';
         inpMetode.value = 'QRIS';
+        // QRIS dibayar lunas otomatis, nominal tidak perlu diisi kasir
+        inpNominal.value = grandTotal;
+        inpNominal.disabled = true;
     }
 }
 

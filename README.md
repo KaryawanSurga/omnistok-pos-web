@@ -54,6 +54,7 @@ omnistok-web/
 │   ├── schema.sql           # Skrip DDL Lengkap (MySQL InnoDB)
 │   ├── migration_akun_mysql.sql   # Migrasi kolom nama_lengkap akun untuk MySQL lama
 │   ├── migration_diskon_mysql.sql # Migrasi kolom promo untuk database MySQL lama
+│   ├── migration_pembayaran_rekonsiliasi_mysql.sql # Migrasi kolom pembayaran POS & rekap tutup shift
 │   └── omnistok_local.sqlite# Basis data SQLite lokal & serverless siap pakai
 ├── layout/
 │   ├── header.php           # Template sidebar & top bar terpusat
@@ -94,6 +95,13 @@ Database SQLite dimigrasikan otomatis saat halaman dibuka. Untuk MySQL yang suda
 memiliki tabel `diskon` versi lama, jalankan `database/migration_diskon_mysql.sql`
 terlebih dahulu (satu blok per satu blok). Tanpa migrasi ini halaman promo akan
 gagal karena kolom `kode_diskon`, `status_aktif`, dan kolom baru lainnya belum ada.
+
+Untuk MySQL yang sudah memiliki tabel `transaksi` dan `rekonsiliasi` versi lama,
+jalankan `database/migration_pembayaran_rekonsiliasi_mysql.sql`. Migrasi ini
+menambahkan kolom `metode_bayar`, `nominal_bayar`, `kembalian` pada `transaksi`
+serta kolom rekap shift (`modal_awal`, `total_tunai`, `total_qris`, `kas_fisik`,
+`selisih`, `catatan`) pada `rekonsiliasi`. Tanpa migrasi ini pembayaran Tunai/QRIS
+dan penutupan shift akan gagal.
 
 ---
 

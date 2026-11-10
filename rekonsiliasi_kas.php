@@ -7,42 +7,99 @@
  */
 
 require_once __DIR__ . '/config/database.php';
-$db = Database::getInstance();
+require_once __DIR__ . '/controllers/TransaksiController.php';
+
+$db  = Database::getInstance();
+$trx = new TransaksiController();
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 $message = null;
 $messageType = 'info';
 
-// Modal awal dan target kas sistem persis sketsa UI-14
-$modalAwal = 500000;
-$totalTunaiSistem = 4250000;
-$totalQrisSistem = 4200000;
-$kasSistemDiharapkan = $modalAwal + $totalTunaiSistem; // Rp 4.750.000
+// Pesan hasil aksi sebelumnya (pola Post/Redirect/Get)
+if (!empty($_SESSION['rekon_flash'])) {
+    $message     = $_SESSION['rekon_flash']['message'];
+    $messageType = $_SESSION['rekon_flash']['type'];
+    unset($_SESSION['rekon_flash']);
+}
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'simpan_rekonsiliasi') {
-    $kasFisik = floatval($_POST['kas_fisik']);
-    $selisih = $kasFisik - $kasSistemDiharapkan;
-    $catatan = trim($_POST['catatan'] ?? '');
-    $status = ($selisih == 0) ? 'Match (Cocok)' : (($selisih < 0) ? 'Selisih Kurang (-Rp ' . number_format(abs($selisih), 0, ',', '.') . ')' : 'Selisih Lebih (+Rp ' . number_format($selisih, 0, ',', '.') . ')');
+// [PC-08.5 s/d PC-08.9] Simpan berita acara tutup shift kasir
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'simpan_rekonsiliasi') {
+    $kasFisik = floatval($_POST['kas_fisik'] ?? 0);
+    $catatan  = trim($_POST['catatan'] ?? '');
 
-    try {
-        $stmt = $db->prepare("
-            INSERT INTO rekonsiliasi (id_transaksi, status, tanggal)
-            VALUES (1001, ?, datetime('now'))
-        ");
-        if ($db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql') {
-            $stmt = $db->prepare("
-                INSERT INTO rekonsiliasi (id_transaksi, status, tanggal)
-                VALUES (1001, ?, NOW())
-            ");
+    $hasil = $trx->simpan_rekonsiliasi($kasFisik, $catatan);
+
+    if ($hasil['status']) {
+        if ($hasil['selisih'] == 0) {
+            $keterangan = 'kas fisik sesuai dengan kas sistem (tidak ada selisih).';
+        } else {
+            $keterangan = $hasil['status_kas'] . ' sebesar Rp ' . number_format(abs($hasil['selisih']), 0, ',', '.') . '.';
         }
-        $stmt->execute([$status]);
 
-        $message = "Shift Kasir 01 berhasil ditutup dan Berita Acara Rekonsiliasi Kas telah diterbitkan!";
-        $messageType = ($selisih == 0) ? "success" : "warning";
-    } catch (Exception $e) {
-        $message = "Gagal menyimpan rekonsiliasi: " . $e->getMessage();
-        $messageType = "danger";
+        $_SESSION['rekon_flash'] = [
+            'message' => 'Shift kasir berhasil ditutup: ' . $keterangan,
+            'type'    => ($hasil['selisih'] == 0) ? 'success' : 'warning',
+        ];
+    } else {
+        $_SESSION['rekon_flash'] = [
+            'message' => $hasil['message'],
+            'type'    => 'danger',
+        ];
     }
+
+    header('Location: rekonsiliasi_kas.php');
+    exit;
+}
+
+// Rekap kas shift berjalan (dihitung dari transaksi POS sejak tutup kasir terakhir)
+$ringkasan           = $trx->get_ringkasan_shift();
+$modalAwal           = $ringkasan['modal_awal'];
+$totalTunaiSistem    = $ringkasan['total_tunai'];
+$totalQrisSistem     = $ringkasan['total_qris'];
+$jumlahTunai         = $ringkasan['jumlah_tunai'];
+$jumlahQris          = $ringkasan['jumlah_qris'];
+$kasSistemDiharapkan = $ringkasan['kas_sistem'];
+
+// Riwayat tutup kasir yang sudah tersimpan
+$riwayatRekonsiliasi = $trx->get_riwayat_rekonsiliasi(25);
+
+/**
+ * Kelas pill warna sesuai status rekonsiliasi.
+ */
+function statusRekonPillClass($status) {
+    $s = strtolower((string) $status);
+    if (strpos($s, 'cocok') !== false || strpos($s, 'match') !== false || strpos($s, 'balance') !== false) {
+        return 'pill-green';
+    }
+    if (strpos($s, 'kurang') !== false) {
+        return 'pill-red';
+    }
+    if (strpos($s, 'lebih') !== false) {
+        return 'pill-amber';
+    }
+    return 'pill-gray';
+}
+
+// Isi awal pecahan mengikuti kas sistem agar nilai variance awal = Rp 0
+$pecahan = [
+    100000 => 'c100',
+    50000  => 'c50',
+    20000  => 'c20',
+    10000  => 'c10',
+    5000   => 'c5',
+    2000   => 'c2',
+    1000   => 'c1',
+    500    => 'c500',
+];
+$defaultCount = [];
+$sisaPecahan  = (int) round($kasSistemDiharapkan);
+foreach ($pecahan as $nilai => $inputId) {
+    $defaultCount[$inputId] = intdiv($sisaPecahan, $nilai);
+    $sisaPecahan %= $nilai;
 }
 
 $activePage = 'rekonsiliasi_kas';
@@ -61,7 +118,7 @@ require_once __DIR__ . '/layout/header.php';
             <h1 class="page-title">Rekonsiliasi Kas (Cash Reconciliation &amp; End of Shift)</h1>
             <p class="page-subtitle">Penutupan register kasir, audit fisik uang per pecahan laci kasir, dan validasi selisih kas.</p>
         </div>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="alert('Membuka riwayat rekap shift sebelumnya.');">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('riwayatRekonsiliasi').scrollIntoView({ behavior: 'smooth' });">
             ▤ Riwayat Tutup Kasir
         </button>
     </div>
@@ -108,7 +165,7 @@ require_once __DIR__ . '/layout/header.php';
         <div class="stat-info">
             <div class="stat-label">TOTAL PENJUALAN TUNAI</div>
             <div class="stat-value">Rp <?= number_format($totalTunaiSistem, 0, ',', '.'); ?></div>
-            <div class="stat-sub">34 transaksi tunai tercatat</div>
+            <div class="stat-sub"><?= $jumlahTunai; ?> transaksi tunai tercatat</div>
         </div>
         <div style="background: #f0fdf4; color: #16a34a; width: 34px; height: 34px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 1rem;">
             🛒
@@ -119,7 +176,7 @@ require_once __DIR__ . '/layout/header.php';
         <div class="stat-info">
             <div class="stat-label">TOTAL QRIS / NON-TUNAI</div>
             <div class="stat-value">Rp <?= number_format($totalQrisSistem, 0, ',', '.'); ?></div>
-            <div class="stat-sub">108 transaksi digital</div>
+            <div class="stat-sub"><?= $jumlahQris; ?> transaksi QRIS tercatat</div>
         </div>
         <div style="background: #eff6ff; color: #2563eb; width: 34px; height: 34px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 1rem;">
             📱
@@ -176,7 +233,7 @@ require_once __DIR__ . '/layout/header.php';
                         <td style="text-align: center;">
                             <div style="display: inline-flex; align-items: center; gap: 6px;">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="adjustCount('c100', -1)">-</button>
-                                <input type="number" id="c100" class="form-control" value="32" min="0" style="width: 55px; text-align: center; padding: 4px;" oninput="recalcDenom()">
+                                <input type="number" id="c100" class="form-control" value="<?= $defaultCount['c100']; ?>" min="0" style="width: 55px; text-align: center; padding: 4px;" oninput="recalcDenom()">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="adjustCount('c100', 1)">+</button>
                             </div>
                         </td>
@@ -197,7 +254,7 @@ require_once __DIR__ . '/layout/header.php';
                         <td style="text-align: center;">
                             <div style="display: inline-flex; align-items: center; gap: 6px;">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="adjustCount('c50', -1)">-</button>
-                                <input type="number" id="c50" class="form-control" value="18" min="0" style="width: 55px; text-align: center; padding: 4px;" oninput="recalcDenom()">
+                                <input type="number" id="c50" class="form-control" value="<?= $defaultCount['c50']; ?>" min="0" style="width: 55px; text-align: center; padding: 4px;" oninput="recalcDenom()">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="adjustCount('c50', 1)">+</button>
                             </div>
                         </td>
@@ -218,7 +275,7 @@ require_once __DIR__ . '/layout/header.php';
                         <td style="text-align: center;">
                             <div style="display: inline-flex; align-items: center; gap: 6px;">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="adjustCount('c20', -1)">-</button>
-                                <input type="number" id="c20" class="form-control" value="15" min="0" style="width: 55px; text-align: center; padding: 4px;" oninput="recalcDenom()">
+                                <input type="number" id="c20" class="form-control" value="<?= $defaultCount['c20']; ?>" min="0" style="width: 55px; text-align: center; padding: 4px;" oninput="recalcDenom()">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="adjustCount('c20', 1)">+</button>
                             </div>
                         </td>
@@ -239,7 +296,7 @@ require_once __DIR__ . '/layout/header.php';
                         <td style="text-align: center;">
                             <div style="display: inline-flex; align-items: center; gap: 6px;">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="adjustCount('c10', -1)">-</button>
-                                <input type="number" id="c10" class="form-control" value="20" min="0" style="width: 55px; text-align: center; padding: 4px;" oninput="recalcDenom()">
+                                <input type="number" id="c10" class="form-control" value="<?= $defaultCount['c10']; ?>" min="0" style="width: 55px; text-align: center; padding: 4px;" oninput="recalcDenom()">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="adjustCount('c10', 1)">+</button>
                             </div>
                         </td>
@@ -260,7 +317,7 @@ require_once __DIR__ . '/layout/header.php';
                         <td style="text-align: center;">
                             <div style="display: inline-flex; align-items: center; gap: 6px;">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="adjustCount('c5', -1)">-</button>
-                                <input type="number" id="c5" class="form-control" value="14" min="0" style="width: 55px; text-align: center; padding: 4px;" oninput="recalcDenom()">
+                                <input type="number" id="c5" class="form-control" value="<?= $defaultCount['c5']; ?>" min="0" style="width: 55px; text-align: center; padding: 4px;" oninput="recalcDenom()">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="adjustCount('c5', 1)">+</button>
                             </div>
                         </td>
@@ -281,7 +338,7 @@ require_once __DIR__ . '/layout/header.php';
                         <td style="text-align: center;">
                             <div style="display: inline-flex; align-items: center; gap: 6px;">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="adjustCount('c2', -1)">-</button>
-                                <input type="number" id="c2" class="form-control" value="30" min="0" style="width: 55px; text-align: center; padding: 4px;" oninput="recalcDenom()">
+                                <input type="number" id="c2" class="form-control" value="<?= $defaultCount['c2']; ?>" min="0" style="width: 55px; text-align: center; padding: 4px;" oninput="recalcDenom()">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="adjustCount('c2', 1)">+</button>
                             </div>
                         </td>
@@ -302,7 +359,7 @@ require_once __DIR__ . '/layout/header.php';
                         <td style="text-align: center;">
                             <div style="display: inline-flex; align-items: center; gap: 6px;">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="adjustCount('c1', -1)">-</button>
-                                <input type="number" id="c1" class="form-control" value="15" min="0" style="width: 55px; text-align: center; padding: 4px;" oninput="recalcDenom()">
+                                <input type="number" id="c1" class="form-control" value="<?= $defaultCount['c1']; ?>" min="0" style="width: 55px; text-align: center; padding: 4px;" oninput="recalcDenom()">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="adjustCount('c1', 1)">+</button>
                             </div>
                         </td>
@@ -323,7 +380,7 @@ require_once __DIR__ . '/layout/header.php';
                         <td style="text-align: center;">
                             <div style="display: inline-flex; align-items: center; gap: 6px;">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="adjustCount('c500', -1)">-</button>
-                                <input type="number" id="c500" class="form-control" value="10" min="0" style="width: 55px; text-align: center; padding: 4px;" oninput="recalcDenom()">
+                                <input type="number" id="c500" class="form-control" value="<?= $defaultCount['c500']; ?>" min="0" style="width: 55px; text-align: center; padding: 4px;" oninput="recalcDenom()">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="adjustCount('c500', 1)">+</button>
                             </div>
                         </td>
@@ -335,7 +392,7 @@ require_once __DIR__ . '/layout/header.php';
 
         <div style="background: #f1f5f9; padding: 14px 18px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--gray-200);">
             <strong style="font-size: 0.95rem; color: var(--dark);">Total Uang Fisik Terhitung di Laci:</strong>
-            <strong style="font-size: 1.3rem; color: var(--primary);" id="totalFisikDisplay">Rp 4.750.000</strong>
+            <strong style="font-size: 1.3rem; color: var(--primary);" id="totalFisikDisplay">Rp <?= number_format($kasSistemDiharapkan, 0, ',', '.'); ?></strong>
         </div>
     </div>
 
@@ -348,7 +405,7 @@ require_once __DIR__ . '/layout/header.php';
 
         <form method="POST" action="rekonsiliasi_kas.php">
             <input type="hidden" name="action" value="simpan_rekonsiliasi">
-            <input type="hidden" id="inputKasFisik" name="kas_fisik" value="4750000">
+            <input type="hidden" id="inputKasFisik" name="kas_fisik" value="<?= (int) round($kasSistemDiharapkan); ?>">
 
             <div style="margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--gray-100);">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
@@ -357,7 +414,7 @@ require_once __DIR__ . '/layout/header.php';
                 </div>
                 <div style="display: flex; justify-content: space-between;">
                     <span style="font-size: 0.84rem; color: var(--gray-500);">Kas Fisik Terhitung:</span>
-                    <strong style="font-size: 0.95rem;" id="sideKasFisik">Rp 4.750.000</strong>
+                    <strong style="font-size: 0.95rem;" id="sideKasFisik">Rp <?= number_format($kasSistemDiharapkan, 0, ',', '.'); ?></strong>
                 </div>
             </div>
 
@@ -386,6 +443,75 @@ require_once __DIR__ . '/layout/header.php';
                 🖩 Simpan Selisih &amp; Tutup Shift
             </button>
         </form>
+    </div>
+</div>
+
+<!-- RIWAYAT TUTUP KASIR / BERITA ACARA REKONSILIASI -->
+<div class="card-box" id="riwayatRekonsiliasi" style="margin-top: 24px;">
+    <div class="card-box-header">
+        <div>
+            <h3 class="card-box-title">Riwayat Rekonsiliasi &amp; Tutup Kasir</h3>
+            <p style="font-size: 0.78rem; color: var(--gray-500); margin-top: 2px;">
+                Setiap penutupan shift tersimpan permanen sebagai berita acara audit kas.
+            </p>
+        </div>
+        <span class="pill pill-teal"><?= count($riwayatRekonsiliasi); ?> Berita Acara</span>
+    </div>
+
+    <div class="table-wrap">
+        <table class="sketch-table">
+            <thead>
+                <tr>
+                    <th style="width: 40px;">NO</th>
+                    <th>TANGGAL TUTUP</th>
+                    <th style="text-align: right;">MODAL AWAL</th>
+                    <th style="text-align: right;">TUNAI</th>
+                    <th style="text-align: right;">QRIS</th>
+                    <th style="text-align: right;">KAS FISIK</th>
+                    <th style="text-align: right;">SELISIH</th>
+                    <th style="text-align: center;">STATUS</th>
+                    <th>CATATAN</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($riwayatRekonsiliasi)): ?>
+                    <tr>
+                        <td colspan="9" style="text-align: center; color: var(--gray-400); padding: 30px;">
+                            Belum ada riwayat tutup kasir. Simpan rekonsiliasi untuk membuat berita acara pertama.
+                        </td>
+                    </tr>
+                <?php else: ?>
+                    <?php $noRekon = 1; foreach ($riwayatRekonsiliasi as $rk): ?>
+                        <?php
+                            $waktuRekon = strtotime((string) $rk['tanggal']);
+                            $selisihRekon = (float) $rk['selisih'];
+                            $selisihText = ($selisihRekon == 0)
+                                ? 'Rp 0'
+                                : (($selisihRekon < 0 ? '-Rp ' : '+Rp ') . number_format(abs($selisihRekon), 0, ',', '.'));
+                            $selisihColor = ($selisihRekon == 0) ? '#16a34a' : (($selisihRekon < 0) ? '#dc2626' : '#ca8a04');
+                        ?>
+                        <tr>
+                            <td><?= $noRekon++; ?></td>
+                            <td>
+                                <strong><?= $waktuRekon ? date('d/m/Y H:i', $waktuRekon) : htmlspecialchars((string) $rk['tanggal']); ?></strong>
+                                <div style="font-size: 0.72rem; color: var(--gray-400);">#REK-<?= str_pad((string) $rk['id_rekonsiliasi'], 4, '0', STR_PAD_LEFT); ?></div>
+                            </td>
+                            <td style="text-align: right;">Rp <?= number_format((float) $rk['modal_awal'], 0, ',', '.'); ?></td>
+                            <td style="text-align: right;">Rp <?= number_format((float) $rk['total_tunai'], 0, ',', '.'); ?></td>
+                            <td style="text-align: right;">Rp <?= number_format((float) $rk['total_qris'], 0, ',', '.'); ?></td>
+                            <td style="text-align: right; font-weight: 700;">Rp <?= number_format((float) $rk['kas_fisik'], 0, ',', '.'); ?></td>
+                            <td style="text-align: right; font-weight: 700; color: <?= $selisihColor; ?>;"><?= $selisihText; ?></td>
+                            <td style="text-align: center;">
+                                <span class="pill <?= statusRekonPillClass($rk['status']); ?>"><?= htmlspecialchars((string) $rk['status']); ?></span>
+                            </td>
+                            <td style="font-size: 0.8rem; color: var(--gray-500);">
+                                <?= !empty($rk['catatan']) ? htmlspecialchars($rk['catatan']) : '-'; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
     </div>
 </div>
 

@@ -90,6 +90,9 @@ CREATE TABLE IF NOT EXISTS transaksi (
     id_akun INT NOT NULL,
     tanggal_transaksi DATETIME NOT NULL,
     total_harga DECIMAL(10,2) NOT NULL,
+    metode_bayar VARCHAR(20) NOT NULL DEFAULT 'Tunai',
+    nominal_bayar DECIMAL(10,2) NOT NULL DEFAULT 0,
+    kembalian DECIMAL(10,2) NOT NULL DEFAULT 0,
     CONSTRAINT fk_transaksi_akun FOREIGN KEY (id_akun) REFERENCES akun(id_akun) ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -109,9 +112,15 @@ CREATE TABLE IF NOT EXISTS detail_penjualan (
 -- 10. TABEL REKONSILIASI KAS (PDM Halaman 141-142)
 CREATE TABLE IF NOT EXISTS rekonsiliasi (
     id_rekonsiliasi INT AUTO_INCREMENT PRIMARY KEY,
-    id_transaksi INT NOT NULL,
+    id_transaksi INT NULL,
     status VARCHAR(50) NOT NULL,
     tanggal DATETIME NOT NULL,
+    modal_awal DECIMAL(10,2) NOT NULL DEFAULT 0,
+    total_tunai DECIMAL(10,2) NOT NULL DEFAULT 0,
+    total_qris DECIMAL(10,2) NOT NULL DEFAULT 0,
+    kas_fisik DECIMAL(10,2) NOT NULL DEFAULT 0,
+    selisih DECIMAL(10,2) NOT NULL DEFAULT 0,
+    catatan TEXT NULL,
     CONSTRAINT fk_rekonsiliasi_transaksi FOREIGN KEY (id_transaksi) REFERENCES transaksi(id_transaksi) ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

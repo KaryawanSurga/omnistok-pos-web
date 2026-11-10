@@ -117,7 +117,10 @@ class Database {
                 id_transaksi INTEGER PRIMARY KEY AUTOINCREMENT,
                 id_akun INTEGER NOT NULL,
                 tanggal_transaksi DATETIME NOT NULL,
-                total_harga REAL NOT NULL
+                total_harga REAL NOT NULL,
+                metode_bayar TEXT NOT NULL DEFAULT 'Tunai',
+                nominal_bayar REAL NOT NULL DEFAULT 0,
+                kembalian REAL NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS detail_penjualan (
@@ -132,9 +135,15 @@ class Database {
 
             CREATE TABLE IF NOT EXISTS rekonsiliasi (
                 id_rekonsiliasi INTEGER PRIMARY KEY AUTOINCREMENT,
-                id_transaksi INTEGER NOT NULL,
+                id_transaksi INTEGER NULL,
                 status TEXT NOT NULL,
-                tanggal DATETIME NOT NULL
+                tanggal DATETIME NOT NULL,
+                modal_awal REAL NOT NULL DEFAULT 0,
+                total_tunai REAL NOT NULL DEFAULT 0,
+                total_qris REAL NOT NULL DEFAULT 0,
+                kas_fisik REAL NOT NULL DEFAULT 0,
+                selisih REAL NOT NULL DEFAULT 0,
+                catatan TEXT NULL
             );
 
             CREATE TABLE IF NOT EXISTS mutasi_stok (
@@ -204,6 +213,8 @@ class Database {
 
         $this->migrateSqliteDiskon();
         $this->migrateSqliteAkun();
+        $this->migrateSqliteTransaksi();
+        $this->migrateSqliteRekonsiliasi();
 
         // Seed jika tabel riwayat_harga masih kosong
         $stmtRH = $this->pdo->query("SELECT COUNT(*) as cnt FROM riwayat_harga");
@@ -274,5 +285,109 @@ class Database {
             WHERE kode_diskon IS NULL OR kode_diskon = ''
         ");
         $this->pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_diskon_kode ON diskon (kode_diskon)");
+    }
+
+    /**
+     * Menambahkan kolom pembayaran pada tabel transaksi untuk database SQLite lama.
+     * Tanpa kolom ini metode Tunai/QRIS dan nominal bayar tidak dapat dicatat.
+     */
+    private function migrateSqliteTransaksi() {
+        $existing = [];
+        foreach ($this->pdo->query('PRAGMA table_info(transaksi)')->fetchAll() as $column) {
+            $existing[strtolower((string) $column['name'])] = true;
+        }
+
+        $definitions = [
+            'metode_bayar'  => "TEXT NOT NULL DEFAULT 'Tunai'",
+            'nominal_bayar' => 'REAL NOT NULL DEFAULT 0',
+            'kembalian'     => 'REAL NOT NULL DEFAULT 0',
+        ];
+
+        foreach ($definitions as $name => $definition) {
+            if (!isset($existing[$name])) {
+                $this->pdo->exec("ALTER TABLE transaksi ADD COLUMN {$name} {$definition}");
+            }
+        }
+    }
+
+    /**
+     * Menambahkan kolom audit shift pada tabel rekonsiliasi SQLite lama.
+     * Satu baris rekonsiliasi mewakili satu sesi kasir (tutup shift), sehingga
+     * id_transaksi dibuat boleh NULL karena shift bisa ditutup tanpa transaksi.
+     */
+    private function migrateSqliteRekonsiliasi() {
+        $columns = [];
+        foreach ($this->pdo->query('PRAGMA table_info(rekonsiliasi)')->fetchAll() as $column) {
+            $columns[strtolower((string) $column['name'])] = $column;
+        }
+
+        $definitions = [
+            'modal_awal'  => 'REAL NOT NULL DEFAULT 0',
+            'total_tunai' => 'REAL NOT NULL DEFAULT 0',
+            'total_qris'  => 'REAL NOT NULL DEFAULT 0',
+            'kas_fisik'   => 'REAL NOT NULL DEFAULT 0',
+            'selisih'     => 'REAL NOT NULL DEFAULT 0',
+            'catatan'     => 'TEXT NULL',
+        ];
+
+        foreach ($definitions as $name => $definition) {
+            if (!isset($columns[$name])) {
+                $this->pdo->exec("ALTER TABLE rekonsiliasi ADD COLUMN {$name} {$definition}");
+            }
+        }
+
+        if (!empty($columns['id_transaksi']['notnull'])) {
+            $this->rebuildSqliteRekonsiliasi();
+        }
+
+        $this->pdo->exec("
+            UPDATE rekonsiliasi
+            SET status = CASE
+                WHEN selisih = 0 THEN 'Cocok (Balance)'
+                WHEN selisih < 0 THEN 'Selisih Kurang'
+                ELSE 'Selisih Lebih'
+            END
+            WHERE status IS NULL OR status = ''
+        ");
+    }
+
+    /**
+     * SQLite tidak mendukung ALTER COLUMN, sehingga tabel rekonsiliasi dibangun
+     * ulang agar kolom id_transaksi menjadi nullable tanpa kehilangan data lama.
+     */
+    private function rebuildSqliteRekonsiliasi() {
+        $this->pdo->exec('PRAGMA foreign_keys = OFF');
+        $this->pdo->exec('BEGIN');
+        try {
+            $this->pdo->exec('ALTER TABLE rekonsiliasi RENAME TO rekonsiliasi_lama');
+            $this->pdo->exec("
+                CREATE TABLE rekonsiliasi (
+                    id_rekonsiliasi INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id_transaksi INTEGER NULL,
+                    status TEXT NOT NULL,
+                    tanggal DATETIME NOT NULL,
+                    modal_awal REAL NOT NULL DEFAULT 0,
+                    total_tunai REAL NOT NULL DEFAULT 0,
+                    total_qris REAL NOT NULL DEFAULT 0,
+                    kas_fisik REAL NOT NULL DEFAULT 0,
+                    selisih REAL NOT NULL DEFAULT 0,
+                    catatan TEXT NULL
+                )
+            ");
+            $this->pdo->exec("
+                INSERT INTO rekonsiliasi (id_rekonsiliasi, id_transaksi, status, tanggal, modal_awal, total_tunai, total_qris, kas_fisik, selisih, catatan)
+                SELECT r.id_rekonsiliasi,
+                       (SELECT t.id_transaksi FROM transaksi t WHERE t.id_transaksi = r.id_transaksi),
+                       r.status, r.tanggal, r.modal_awal, r.total_tunai, r.total_qris, r.kas_fisik, r.selisih, r.catatan
+                FROM rekonsiliasi_lama r
+            ");
+            $this->pdo->exec('DROP TABLE rekonsiliasi_lama');
+            $this->pdo->exec('COMMIT');
+        } catch (Exception $e) {
+            $this->pdo->exec('ROLLBACK');
+            throw $e;
+        } finally {
+            $this->pdo->exec('PRAGMA foreign_keys = ON');
+        }
     }
 }
