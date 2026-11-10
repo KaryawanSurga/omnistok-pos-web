@@ -17,6 +17,7 @@ USE omnistok_db;
 CREATE TABLE IF NOT EXISTS akun (
     id_akun INT AUTO_INCREMENT PRIMARY KEY,
     email VARCHAR(255) NOT NULL UNIQUE,
+    nama_lengkap VARCHAR(100) NULL,
     password_hash VARCHAR(255) NOT NULL,
     hak_akses VARCHAR(50) NOT NULL,
     role VARCHAR(50) NOT NULL,
@@ -171,11 +172,18 @@ CREATE TABLE IF NOT EXISTS detail_retur (
 -- 16. TABEL DISKON (PDM Halaman 143-144)
 CREATE TABLE IF NOT EXISTS diskon (
     id_diskon INT AUTO_INCREMENT PRIMARY KEY,
+    kode_diskon VARCHAR(20) NULL UNIQUE,
     id_produk INT NOT NULL,
     nama_diskon VARCHAR(50) NOT NULL,
     presentase_diskon DECIMAL(10,2) NOT NULL,
+    maks_diskon DECIMAL(12,2) NULL,
+    kuota INT NULL,
+    terpakai INT NOT NULL DEFAULT 0,
     tanggal_mulai DATE NOT NULL,
     tanggal_selesai DATE NOT NULL,
+    status_aktif TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL,
     CONSTRAINT fk_diskon_produk FOREIGN KEY (id_produk) REFERENCES produk(id_produk) ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -193,10 +201,10 @@ CREATE TABLE IF NOT EXISTS riwayat_harga (
 -- SEED DATA AWAL (UNTUK PENGUJIAN SISTEM)
 -- ==============================================================================
 
-INSERT INTO akun (id_akun, email, password_hash, hak_akses, role, status_aktif, last_login_time) VALUES
-(1, 'admin@omnistok.com', '$2y$10$e8oYqW5aLkm6b/Wc7jM9I.k4bHqyvA7zE3uJkQk7w7.qL6rG', 'SUPER_ADMIN', 'Pemilik Toko', TRUE, NOW()),
-(2, 'kasir@omnistok.com', '$2y$10$e8oYqW5aLkm6b/Wc7jM9I.k4bHqyvA7zE3uJkQk7w7.qL6rG', 'KASIR_POS', 'Kasir', TRUE, NOW()),
-(3, 'gudang@omnistok.com', '$2y$10$e8oYqW5aLkm6b/Wc7jM9I.k4bHqyvA7zE3uJkQk7w7.qL6rG', 'PETUGAS_GUDANG', 'Petugas Stok', TRUE, NOW())
+INSERT INTO akun (id_akun, email, nama_lengkap, password_hash, hak_akses, role, status_aktif, last_login_time) VALUES
+(1, 'admin@omnistok.com', 'Administrator Toko', '$2y$10$e8oYqW5aLkm6b/Wc7jM9I.k4bHqyvA7zE3uJkQk7w7.qL6rG', 'SUPER_ADMIN', 'Pemilik Toko', TRUE, NOW()),
+(2, 'kasir@omnistok.com', 'Kasir Utama', '$2y$10$e8oYqW5aLkm6b/Wc7jM9I.k4bHqyvA7zE3uJkQk7w7.qL6rG', 'KASIR_POS', 'Kasir', TRUE, NOW()),
+(3, 'gudang@omnistok.com', 'Petugas Gudang', '$2y$10$e8oYqW5aLkm6b/Wc7jM9I.k4bHqyvA7zE3uJkQk7w7.qL6rG', 'PETUGAS_GUDANG', 'Petugas Stok', TRUE, NOW())
 ON DUPLICATE KEY UPDATE email=VALUES(email);
 
 INSERT INTO produk (id_produk, nama_produk, kategori, deskripsi, harga_jual, harga_modal) VALUES
@@ -248,9 +256,9 @@ INSERT INTO detail_penerimaan (id_detail_penerimaan, id_penerimaan, id_produk, i
 (13001, 12001, 101, 501, 20)
 ON DUPLICATE KEY UPDATE jumlah_diterima=VALUES(jumlah_diterima);
 
-INSERT INTO diskon (id_diskon, id_produk, nama_diskon, presentase_diskon, tanggal_mulai, tanggal_selesai) VALUES
-(7001, 101, 'Promo Beras Murah', 10.00, '2026-10-01', '2026-11-30')
-ON DUPLICATE KEY UPDATE nama_diskon=VALUES(nama_diskon);
+INSERT INTO diskon (id_diskon, kode_diskon, id_produk, nama_diskon, presentase_diskon, maks_diskon, kuota, terpakai, tanggal_mulai, tanggal_selesai, status_aktif, created_at, updated_at) VALUES
+(7001, 'DSK-7001', 101, 'Promo Beras Murah', 10.00, 15000.00, NULL, 0, '2026-10-01', '2026-11-30', 1, NOW(), NOW())
+ON DUPLICATE KEY UPDATE nama_diskon=VALUES(nama_diskon), status_aktif=VALUES(status_aktif);
 
 INSERT INTO mutasi_stok (id_mutasi, id_produk, jenis_mutasi, jumlah, alasan, tanggal_mutasi) VALUES
 (6001, 101, 'Masuk', 20, 'Penerimaan barang dari PO-2026-001', '2026-10-19 09:30:00'),

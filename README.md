@@ -48,9 +48,11 @@ omnistok-web/
 │   ├── PenerimaanController.php # [ZM-SC01] Kontroler Penerimaan Faktur & Stok
 │   └── MutasiStokController.php # [FW-SC01] Kontroler Mutasi Stok & Riwayat
 ├── css/
-│   └── style.css            # Stylesheet tema antarmuka hijau toska (#0d7a74)
+│   ├── style.css            # Stylesheet tema antarmuka hijau toska (#0d7a74)
+│   └── kelola_diskon.css    # Gaya khusus halaman Kelola Diskon (dimuat kondisional)
 ├── database/
 │   ├── schema.sql           # Skrip DDL Lengkap (MySQL InnoDB)
+│   ├── migration_diskon_mysql.sql # Migrasi kolom promo untuk database MySQL lama
 │   └── omnistok_local.sqlite# Basis data SQLite lokal & serverless siap pakai
 ├── layout/
 │   ├── header.php           # Template sidebar & top bar terpusat
@@ -84,6 +86,13 @@ omnistok-web/
    [http://localhost:8000](http://localhost:8000)
 
 *Catatan: Sistem secara otomatis menggunakan SQLite bawaan (`omnistok_local.sqlite`) dengan 17 tabel tersinkronisasi tanpa memerlukan instalasi database tambahan.*
+
+### Jika memakai MySQL/MariaDB
+
+Database SQLite dimigrasikan otomatis saat halaman dibuka. Untuk MySQL yang sudah
+memiliki tabel `diskon` versi lama, jalankan `database/migration_diskon_mysql.sql`
+terlebih dahulu (satu blok per satu blok). Tanpa migrasi ini halaman promo akan
+gagal karena kolom `kode_diskon`, `status_aktif`, dan kolom baru lainnya belum ada.
 
 ---
 

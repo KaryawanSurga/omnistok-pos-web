@@ -29,6 +29,9 @@ if (isset($_GET['switch_user'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($pageTitle); ?> - OmniStok POS</title>
     <link rel="stylesheet" href="css/style.css">
+    <?php if (in_array(($activePage ?? ''), ['kelola_diskon', 'kelola_akun', 'daftar_produk'], true)): ?>
+    <link rel="stylesheet" href="css/crud_shared.css">
+    <?php endif; ?>
     <link rel="icon" href="assets/logo.png" type="image/png">
 </head>
 <body>

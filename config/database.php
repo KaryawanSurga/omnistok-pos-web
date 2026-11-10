@@ -58,6 +58,7 @@ class Database {
             CREATE TABLE IF NOT EXISTS akun (
                 id_akun INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT NOT NULL UNIQUE,
+                nama_lengkap TEXT NULL,
                 password_hash TEXT NOT NULL,
                 hak_akses TEXT NOT NULL,
                 role TEXT NOT NULL,
@@ -178,11 +179,18 @@ class Database {
 
             CREATE TABLE IF NOT EXISTS diskon (
                 id_diskon INTEGER PRIMARY KEY AUTOINCREMENT,
+                kode_diskon TEXT UNIQUE,
                 id_produk INTEGER NOT NULL,
                 nama_diskon TEXT NOT NULL,
                 presentase_diskon REAL NOT NULL,
+                maks_diskon REAL NULL,
+                kuota INTEGER NULL,
+                terpakai INTEGER NOT NULL DEFAULT 0,
                 tanggal_mulai DATE NOT NULL,
-                tanggal_selesai DATE NOT NULL
+                tanggal_selesai DATE NOT NULL,
+                status_aktif INTEGER NOT NULL DEFAULT 1,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NULL
             );
 
             CREATE TABLE IF NOT EXISTS riwayat_harga (
@@ -194,6 +202,9 @@ class Database {
             );
         ");
 
+        $this->migrateSqliteDiskon();
+        $this->migrateSqliteAkun();
+
         // Seed jika tabel riwayat_harga masih kosong
         $stmtRH = $this->pdo->query("SELECT COUNT(*) as cnt FROM riwayat_harga");
         if ($stmtRH->fetch()['cnt'] == 0) {
@@ -203,13 +214,65 @@ class Database {
                 (102, 34000.0, 30000.0, '2026-10-12'),
                 (103, 17500.0, 15000.0, '2026-10-01');
 
-                INSERT INTO diskon (id_produk, nama_diskon, presentase_diskon, tanggal_mulai, tanggal_selesai) VALUES
-                (101, 'Promo Beras Murah Meriah', 10.0, '2026-10-01', '2026-11-30'),
-                (102, 'Diskon Minyak Goreng Sehat', 5.0, '2026-10-05', '2026-11-15');
+                INSERT INTO diskon (id_diskon, id_produk, kode_diskon, nama_diskon, presentase_diskon, maks_diskon, kuota, terpakai, tanggal_mulai, tanggal_selesai, status_aktif, created_at, updated_at) VALUES
+                (7001, 101, 'DSK-7001', 'Promo Beras Murah Meriah', 10.0, 15000.0, NULL, 0, '2026-10-01', '2026-11-30', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+                (7002, 102, 'DSK-7002', 'Diskon Minyak Goreng Sehat', 5.0, 8000.0, NULL, 0, '2026-10-05', '2026-11-15', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
                 INSERT INTO rekonsiliasi (id_transaksi, status, tanggal) VALUES
                 (1, 'Cocok (Balance)', '2026-10-19 18:00:00');
             ");
         }
+    }
+
+    /**
+     * Migrasi ringan untuk database SQLite yang sudah ada.
+     * CREATE TABLE IF NOT EXISTS tidak menambah kolom pada tabel lama.
+     */
+    private function migrateSqliteAkun() {
+        $existing = [];
+        foreach ($this->pdo->query('PRAGMA table_info(akun)')->fetchAll() as $column) {
+            $existing[strtolower((string) $column['name'])] = true;
+        }
+
+        if (!isset($existing['nama_lengkap'])) {
+            $this->pdo->exec('ALTER TABLE akun ADD COLUMN nama_lengkap TEXT');
+        }
+    }
+
+    /**
+     * Migrasi ringan untuk database SQLite yang sudah ada.
+     * CREATE TABLE IF NOT EXISTS tidak menambah kolom pada tabel lama.
+     */
+    private function migrateSqliteDiskon() {
+        $existing = [];
+        foreach ($this->pdo->query('PRAGMA table_info(diskon)')->fetchAll() as $column) {
+            $existing[strtolower((string) $column['name'])] = true;
+        }
+
+        $definitions = [
+            'kode_diskon'  => 'TEXT',
+            'maks_diskon'  => 'REAL',
+            'kuota'        => 'INTEGER',
+            'terpakai'     => 'INTEGER NOT NULL DEFAULT 0',
+            'status_aktif' => 'INTEGER NOT NULL DEFAULT 1',
+            'created_at'   => 'DATETIME',
+            'updated_at'   => 'DATETIME',
+        ];
+
+        foreach ($definitions as $name => $definition) {
+            if (!isset($existing[$name])) {
+                $this->pdo->exec("ALTER TABLE diskon ADD COLUMN {$name} {$definition}");
+            }
+        }
+
+        $this->pdo->exec("UPDATE diskon SET status_aktif = 1 WHERE status_aktif IS NULL");
+        $this->pdo->exec("UPDATE diskon SET terpakai = 0 WHERE terpakai IS NULL");
+        $this->pdo->exec("UPDATE diskon SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL");
+        $this->pdo->exec("
+            UPDATE diskon
+            SET kode_diskon = 'DSK-' || printf('%03d', id_diskon)
+            WHERE kode_diskon IS NULL OR kode_diskon = ''
+        ");
+        $this->pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_diskon_kode ON diskon (kode_diskon)");
     }
 }
