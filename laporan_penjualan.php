@@ -9,45 +9,84 @@
 require_once __DIR__ . '/config/auth.php';
 auth_require_page(basename(__FILE__));
 
-$db = Database::getInstance();
+require_once __DIR__ . '/controllers/LaporanPenjualanController.php';
 
-$tgl_mulai = isset($_GET['tgl_mulai']) ? $_GET['tgl_mulai'] : '2026-10-14';
-$tgl_akhir = isset($_GET['tgl_akhir']) ? $_GET['tgl_akhir'] : '2026-10-20';
+$controller = new LaporanPenjualanController();
+$defaultPeriode = $controller->buka_laporan_penjualan();
 
-// Ambil transaksi riil dari database
-$transaksiList = $db->query("
-    SELECT t.id_transaksi, t.tanggal_transaksi, t.total_harga,
-           COUNT(dp.id_detail_penjualan) as total_sku,
-           COALESCE(SUM(dp.jumlah), 1) as total_qty,
-           COALESCE(SUM(dp.hpp * dp.jumlah), t.total_harga * 0.78) as total_hpp,
-           (t.total_harga - COALESCE(SUM(dp.hpp * dp.jumlah), t.total_harga * 0.78)) as laba_kotor
-    FROM transaksi t
-    LEFT JOIN detail_penjualan dp ON t.id_transaksi = dp.id_transaksi
-    GROUP BY t.id_transaksi
-    ORDER BY t.tanggal_transaksi DESC
-")->fetchAll();
+// Default 30 hari agar seluruh transaksi riil awal otomatis terlihat saat pertama dibuka
+$tgl_mulai = isset($_GET['tgl_mulai']) ? trim($_GET['tgl_mulai']) : date('Y-m-d', strtotime('-30 days'));
+$tgl_akhir = isset($_GET['tgl_akhir']) ? trim($_GET['tgl_akhir']) : date('Y-m-d');
 
-$penjualanBersih = 1860000;
-$totalHpp = 1480000;
-$labaKotor = $penjualanBersih - $totalHpp; // Rp 380.000
-$marginLaba = round(($labaKotor / $penjualanBersih) * 100, 2); // 20.43%
+// Fitur Ekspor ke PDF (1 tombol terintegrasi di filter form)
+if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
+    $validasi = $controller->validasi_periode($tgl_mulai, $tgl_akhir);
+    if ($validasi['valid']) {
+        $controller->unduh_pdf($tgl_mulai, $tgl_akhir);
+        exit;
+    }
+}
+
+// Ambil data laporan
+$laporanData = $controller->get_laporan_penjualan($tgl_mulai, $tgl_akhir);
+$isValid = $laporanData['status'];
+$pesanPeringatan = $laporanData['message'];
+
+$ringkasan = $laporanData['ringkasan'];
+$trenHarian = $laporanData['tren_harian'];
+$detailProduk = $laporanData['detail_produk'];
 
 $activePage = 'laporan_penjualan';
 $pageTitle = 'Laporan Penjualan & Laba';
 $moduleBreadcrumb = 'REPORTS / SALES & PROFIT ANALYTICS';
 $userName = 'Fauzi Al Wahid';
-$userRole = 'Pemilik Toko (Akses Penuh)';
+$userRole = 'Pemilik Toko (FW)';
 $userInitials = 'FW';
 
 require_once __DIR__ . '/layout/header.php';
 ?>
+
+<style>
+@media print {
+    .app-sidebar, .app-header, .card-box form, .btn, .no-print {
+        display: none !important;
+    }
+    .app-content {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .card-box {
+        border: 1px solid #ddd !important;
+        box-shadow: none !important;
+    }
+}
+</style>
 
 <div class="page-title-box">
     <h1 class="page-title">Laporan Penjualan &amp; Laba</h1>
     <p class="page-subtitle">Pantau penjualan bersih, HPP historis, serta laba kotor toko.</p>
 </div>
 
-<!-- FILTER PERIODE FORM PERSIS UI-05 -->
+<!-- PESAN PERINGATAN VALIDASI PERIODE -->
+<?php if (!$isValid): ?>
+    <div class="alert alert-danger" style="background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 14px 18px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 1.1rem; font-weight: bold; background: #fee2e2; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; color: #b91c1c;">!</span>
+        <div>
+            <strong>Periode Tanggal Tidak Valid!</strong>
+            <div style="font-size: 0.88rem; margin-top: 2px;"><?= htmlspecialchars($pesanPeringatan); ?></div>
+        </div>
+    </div>
+<?php elseif (empty($detailProduk)): ?>
+    <div class="alert alert-warning" style="background: #fffbeb; border: 1px solid #fef3c7; color: #92400e; padding: 14px 18px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 1.1rem; font-weight: bold; background: #fef3c7; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; color: #b45309;">i</span>
+        <div>
+            <strong>Tidak Ada Data Transaksi</strong>
+            <div style="font-size: 0.88rem; margin-top: 2px;">Tidak ditemukan data penjualan pada rentang <?= htmlspecialchars($tgl_mulai); ?> s/d <?= htmlspecialchars($tgl_akhir); ?>. Silakan pilih rentang tanggal lain.</div>
+        </div>
+    </div>
+<?php endif; ?>
+
+<!-- FILTER PERIODE FORM PERSIS UI-05 DENGAN 1 TOMBOL UNDUH PDF -->
 <div class="card-box" style="padding: 16px 20px; margin-bottom: 22px;">
     <form method="GET" action="laporan_penjualan.php" style="display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap;">
         <div class="form-group" style="flex: 1; min-width: 170px;">
@@ -61,6 +100,9 @@ require_once __DIR__ . '/layout/header.php';
         <button type="submit" class="btn btn-primary" style="height: 40px; padding: 0 20px;">
             <span style="font-size: 0.9rem;">Y</span> Tampilkan
         </button>
+        <a href="laporan_penjualan.php?tgl_mulai=<?= urlencode($tgl_mulai); ?>&tgl_akhir=<?= urlencode($tgl_akhir); ?>&export=pdf" class="btn btn-secondary" style="height: 40px; display: inline-flex; align-items: center; gap: 6px;">
+            Unduh PDF
+        </a>
     </form>
 </div>
 
@@ -69,7 +111,7 @@ require_once __DIR__ . '/layout/header.php';
     <div class="stat-box">
         <div class="stat-info">
             <div class="stat-label">PENJUALAN BERSIH</div>
-            <div class="stat-value">Rp <?= number_format($penjualanBersih, 0, ',', '.'); ?></div>
+            <div class="stat-value">Rp <?= number_format($ringkasan['penjualan_bersih'], 0, ',', '.'); ?></div>
             <div class="stat-sub">• Setelah diskon</div>
         </div>
     </div>
@@ -77,7 +119,7 @@ require_once __DIR__ . '/layout/header.php';
     <div class="stat-box">
         <div class="stat-info">
             <div class="stat-label">TOTAL HPP</div>
-            <div class="stat-value">Rp <?= number_format($totalHpp, 0, ',', '.'); ?></div>
+            <div class="stat-value">Rp <?= number_format($ringkasan['total_hpp'], 0, ',', '.'); ?></div>
             <div class="stat-sub">• Biaya perolehan historis</div>
         </div>
     </div>
@@ -85,7 +127,7 @@ require_once __DIR__ . '/layout/header.php';
     <div class="stat-box">
         <div class="stat-info">
             <div class="stat-label">LABA KOTOR</div>
-            <div class="stat-value" style="color: var(--primary);">Rp <?= number_format($labaKotor, 0, ',', '.'); ?></div>
+            <div class="stat-value" style="color: var(--primary);">Rp <?= number_format($ringkasan['laba_kotor'], 0, ',', '.'); ?></div>
             <div class="stat-sub">• Penjualan dikurangi HPP</div>
         </div>
     </div>
@@ -93,7 +135,7 @@ require_once __DIR__ . '/layout/header.php';
     <div class="stat-box">
         <div class="stat-info">
             <div class="stat-label">MARGIN LABA KOTOR</div>
-            <div class="stat-value" style="color: #0284c7;"><?= number_format($marginLaba, 2, ',', '.'); ?>%</div>
+            <div class="stat-value" style="color: #0284c7;"><?= number_format($ringkasan['margin'], 2, ',', '.'); ?>%</div>
             <div class="stat-sub">• Laba kotor / penjualan</div>
         </div>
     </div>
@@ -106,7 +148,9 @@ require_once __DIR__ . '/layout/header.php';
         <div class="card-box-header" style="border-bottom: none; margin-bottom: 10px;">
             <div>
                 <h3 class="card-box-title">Tren Penjualan &amp; Laba Kotor</h3>
-                <span style="font-size: 0.74rem; color: var(--gray-400);">14-20 Oktober 2026 • Dalam ribuan rupiah</span>
+                <span style="font-size: 0.74rem; color: var(--gray-400);">
+                    <?= date('d M Y', strtotime($tgl_mulai)); ?> s/d <?= date('d M Y', strtotime($tgl_akhir)); ?> • Dalam ribuan rupiah
+                </span>
             </div>
             <div style="display: flex; gap: 14px; font-size: 0.78rem;">
                 <span style="display: flex; align-items: center; gap: 6px;">
@@ -118,56 +162,100 @@ require_once __DIR__ . '/layout/header.php';
             </div>
         </div>
 
+        <?php
+        // Perhitungan titik koordinat SVG Tren
+        $chartPoints = $trenHarian;
+        $maxVal = 1000;
+        foreach ($chartPoints as $p) {
+            if ($p['penjualan'] > $maxVal) $maxVal = $p['penjualan'];
+            if ($p['laba'] > $maxVal) $maxVal = $p['laba'];
+        }
+        $yMax = ceil($maxVal / 100000) * 100000;
+        if ($yMax < 50000) $yMax = 100000;
+
+        $pointCount = count($chartPoints);
+        $xStart = 60;
+        $xEnd = 670;
+        $yBase = 210;
+        $yTop = 30;
+        $plotH = $yBase - $yTop;
+
+        $penjualanPoints = [];
+        $labaPoints = [];
+        $svgPointsMeta = [];
+
+        for ($i = 0; $i < $pointCount; $i++) {
+            $px = ($pointCount > 1) 
+                ? $xStart + ($i * (($xEnd - $xStart) / ($pointCount - 1)))
+                : ($xStart + $xEnd) / 2;
+
+            $pyPenjualan = $yBase - (($chartPoints[$i]['penjualan'] / $yMax) * $plotH);
+            $pyLaba      = $yBase - (($chartPoints[$i]['laba'] / $yMax) * $plotH);
+
+            $penjualanPoints[] = round($px, 1) . ',' . round($pyPenjualan, 1);
+            $labaPoints[]      = round($px, 1) . ',' . round($pyLaba, 1);
+
+            $svgPointsMeta[] = [
+                'x' => round($px, 1),
+                'yP' => round($pyPenjualan, 1),
+                'yL' => round($pyLaba, 1),
+                'label' => $chartPoints[$i]['label'],
+                'valP' => $chartPoints[$i]['penjualan'],
+                'valL' => $chartPoints[$i]['laba'],
+            ];
+        }
+        $pointsPenjualanStr = implode(' ', $penjualanPoints);
+        $pointsLabaStr      = implode(' ', $labaPoints);
+        ?>
+
         <!-- AUTHENTIC SVG LINE CHART MATCHING WIREFRAME -->
         <div style="width: 100%; height: 260px; position: relative;">
-            <svg viewBox="0 0 700 240" style="width: 100%; height: 100%; overflow: visible;">
+            <svg viewBox="0 0 700 245" style="width: 100%; height: 100%; overflow: visible;">
                 <!-- Grid Lines -->
                 <line x1="50" y1="30" x2="680" y2="30" stroke="#f1f5f9" stroke-width="1" />
-                <line x1="50" y1="80" x2="680" y2="80" stroke="#f1f5f9" stroke-width="1" />
-                <line x1="50" y1="130" x2="680" y2="130" stroke="#f1f5f9" stroke-width="1" />
-                <line x1="50" y1="180" x2="680" y2="180" stroke="#f1f5f9" stroke-width="1" />
+                <line x1="50" y1="75" x2="680" y2="75" stroke="#f1f5f9" stroke-width="1" />
+                <line x1="50" y1="120" x2="680" y2="120" stroke="#f1f5f9" stroke-width="1" />
+                <line x1="50" y1="165" x2="680" y2="165" stroke="#f1f5f9" stroke-width="1" />
                 <line x1="50" y1="210" x2="680" y2="210" stroke="#cbd5e1" stroke-width="1.5" />
 
                 <!-- Y Axis Labels -->
-                <text x="35" y="34" font-size="11" fill="#94a3b8" text-anchor="end">400</text>
-                <text x="35" y="84" font-size="11" fill="#94a3b8" text-anchor="end">300</text>
-                <text x="35" y="134" font-size="11" fill="#94a3b8" text-anchor="end">200</text>
-                <text x="35" y="184" font-size="11" fill="#94a3b8" text-anchor="end">100</text>
-                <text x="35" y="214" font-size="11" fill="#94a3b8" text-anchor="end">0</text>
+                <text x="45" y="34" font-size="10" fill="#94a3b8" text-anchor="end"><?= round($yMax / 1000); ?></text>
+                <text x="45" y="79" font-size="10" fill="#94a3b8" text-anchor="end"><?= round(($yMax * 0.75) / 1000); ?></text>
+                <text x="45" y="124" font-size="10" fill="#94a3b8" text-anchor="end"><?= round(($yMax * 0.50) / 1000); ?></text>
+                <text x="45" y="169" font-size="10" fill="#94a3b8" text-anchor="end"><?= round(($yMax * 0.25) / 1000); ?></text>
+                <text x="45" y="214" font-size="10" fill="#94a3b8" text-anchor="end">0</text>
 
                 <!-- X Axis Labels (Dates) -->
-                <!-- x coords: 80, 180, 280, 380, 480, 580, 660 -->
-                <text x="80" y="230" font-size="11" fill="#64748b" text-anchor="middle">14 Okt</text>
-                <text x="180" y="230" font-size="11" fill="#64748b" text-anchor="middle">15 Okt</text>
-                <text x="280" y="230" font-size="11" fill="#64748b" text-anchor="middle">16 Okt</text>
-                <text x="380" y="230" font-size="11" fill="#64748b" text-anchor="middle">17 Okt</text>
-                <text x="480" y="230" font-size="11" fill="#64748b" text-anchor="middle">18 Okt</text>
-                <text x="580" y="230" font-size="11" fill="#64748b" text-anchor="middle">19 Okt</text>
-                <text x="660" y="230" font-size="11" fill="#64748b" text-anchor="middle">20 Okt</text>
+                <?php 
+                $labelStep = ($pointCount > 8) ? ceil($pointCount / 7) : 1;
+                foreach ($svgPointsMeta as $idx => $pt): 
+                    if ($idx % $labelStep === 0 || $idx === $pointCount - 1):
+                ?>
+                    <text x="<?= $pt['x']; ?>" y="228" font-size="10" fill="#64748b" text-anchor="middle"><?= $pt['label']; ?></text>
+                <?php 
+                    endif;
+                endforeach; 
+                ?>
 
-                <!-- Penjualan Line (Teal #0f766e) -->
-                <!-- Points: (80, 145), (180, 105), (280, 115), (380, 75), (480, 85), (580, 65), (660, 55) -->
-                <polyline fill="none" stroke="#0f766e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
-                    points="80,145 180,105 280,115 380,75 480,85 580,65 660,55" />
-                <circle cx="80" cy="145" r="4.5" fill="#0f766e" />
-                <circle cx="180" cy="105" r="4.5" fill="#0f766e" />
-                <circle cx="280" cy="115" r="4.5" fill="#0f766e" />
-                <circle cx="380" cy="75" r="4.5" fill="#0f766e" />
-                <circle cx="480" cy="85" r="4.5" fill="#0f766e" />
-                <circle cx="580" cy="65" r="4.5" fill="#0f766e" />
-                <circle cx="660" cy="55" r="4.5" fill="#0f766e" />
+                <?php if ($pointCount > 0): ?>
+                    <!-- Penjualan Line (Teal #0f766e) -->
+                    <polyline fill="none" stroke="#0f766e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                        points="<?= $pointsPenjualanStr; ?>" />
+                    <?php foreach ($svgPointsMeta as $pt): ?>
+                        <circle cx="<?= $pt['x']; ?>" cy="<?= $pt['yP']; ?>" r="4" fill="#0f766e">
+                            <title><?= $pt['label']; ?>: Penjualan Rp <?= number_format($pt['valP'], 0, ',', '.'); ?></title>
+                        </circle>
+                    <?php endforeach; ?>
 
-                <!-- Laba Kotor Line (Blue #0284c7) -->
-                <!-- Points: (80, 195), (180, 190), (280, 192), (380, 185), (480, 188), (580, 178), (660, 180) -->
-                <polyline fill="none" stroke="#0284c7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
-                    points="80,195 180,190 280,192 380,185 480,188 580,178 660,180" />
-                <circle cx="80" cy="195" r="4" fill="#0284c7" />
-                <circle cx="180" cy="190" r="4" fill="#0284c7" />
-                <circle cx="280" cy="192" r="4" fill="#0284c7" />
-                <circle cx="380" cy="185" r="4" fill="#0284c7" />
-                <circle cx="480" cy="188" r="4" fill="#0284c7" />
-                <circle cx="580" cy="178" r="4" fill="#0284c7" />
-                <circle cx="660" cy="180" r="4" fill="#0284c7" />
+                    <!-- Laba Kotor Line (Blue #0284c7) -->
+                    <polyline fill="none" stroke="#0284c7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                        points="<?= $pointsLabaStr; ?>" />
+                    <?php foreach ($svgPointsMeta as $pt): ?>
+                        <circle cx="<?= $pt['x']; ?>" cy="<?= $pt['yL']; ?>" r="3.5" fill="#0284c7">
+                            <title><?= $pt['label']; ?>: Laba Rp <?= number_format($pt['valL'], 0, ',', '.'); ?></title>
+                        </circle>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </svg>
         </div>
     </div>
@@ -177,21 +265,21 @@ require_once __DIR__ . '/layout/header.php';
         <div>
             <div class="card-box-header">
                 <h3 class="card-box-title">Ringkasan Periode</h3>
-                <span class="pill pill-teal">7 Hari</span>
+                <span class="pill pill-teal"><?= $ringkasan['jumlah_hari']; ?> Hari</span>
             </div>
 
             <div style="margin-bottom: 18px;">
-                <div style="font-size: 1.8rem; font-weight: 800; color: var(--dark);">55 unit</div>
+                <div style="font-size: 1.8rem; font-weight: 800; color: var(--dark);"><?= $ringkasan['total_qty']; ?> unit</div>
                 <div style="font-size: 0.76rem; color: var(--gray-400);">Jumlah produk terjual</div>
             </div>
 
             <div style="margin-bottom: 18px;">
-                <div style="font-size: 1.8rem; font-weight: 800; color: var(--dark);">4 SKU</div>
+                <div style="font-size: 1.8rem; font-weight: 800; color: var(--dark);"><?= $ringkasan['total_sku']; ?> SKU</div>
                 <div style="font-size: 0.76rem; color: var(--gray-400);">Produk yang terjual</div>
             </div>
 
             <div style="margin-bottom: 18px;">
-                <div style="font-size: 1.8rem; font-weight: 800; color: var(--dark);">7 hari</div>
+                <div style="font-size: 1.8rem; font-weight: 800; color: var(--dark);"><?= $ringkasan['jumlah_hari']; ?> hari</div>
                 <div style="font-size: 0.76rem; color: var(--gray-400);">Periode laporan</div>
             </div>
         </div>
@@ -211,7 +299,7 @@ require_once __DIR__ . '/layout/header.php';
                 Lihat jumlah terjual, penjualan, HPP, dan laba setiap produk.
             </p>
         </div>
-        <div style="display: flex; gap: 8px; align-items: center;">
+        <div style="display: flex; gap: 8px; align-items: center;" class="no-print">
             <button type="button" class="btn btn-primary btn-sm" onclick="alert('Membuka modal detail pergerakan SKU');">
                 ▤ Lihat Detail per Produk
             </button>
@@ -225,6 +313,7 @@ require_once __DIR__ . '/layout/header.php';
                 <tr>
                     <th>SKU</th>
                     <th>NAMA PRODUK</th>
+                    <th>KATEGORI</th>
                     <th style="text-align: center;">QTY TERJUAL</th>
                     <th style="text-align: right;">PENJUALAN (RP)</th>
                     <th style="text-align: right;">HPP TOTAL (RP)</th>
@@ -233,48 +322,32 @@ require_once __DIR__ . '/layout/header.php';
                 </tr>
             </thead>
             <tbody>
-                <tr>
-                    <td class="sku-badge">PRD-001</td>
-                    <td><strong>Beras Rojolele 5 kg</strong></td>
-                    <td style="text-align: center;">18 unit</td>
-                    <td style="text-align: right;">Rp 1.170.000</td>
-                    <td style="text-align: right;">Rp 1.044.000</td>
-                    <td style="text-align: right; color: var(--primary); font-weight: bold;">Rp 126.000</td>
-                    <td style="text-align: center;"><span class="pill pill-green">10.77%</span></td>
-                </tr>
-                <tr>
-                    <td class="sku-badge">PRD-002</td>
-                    <td><strong>Minyak Goreng 2 L</strong></td>
-                    <td style="text-align: center;">15 pouch</td>
-                    <td style="text-align: right;">Rp 450.000</td>
-                    <td style="text-align: right;">Rp 390.000</td>
-                    <td style="text-align: right; color: var(--primary); font-weight: bold;">Rp 60.000</td>
-                    <td style="text-align: center;"><span class="pill pill-green">13.33%</span></td>
-                </tr>
-                <tr>
-                    <td class="sku-badge">PRD-003</td>
-                    <td><strong>Gula Pasir Kristal 1 kg</strong></td>
-                    <td style="text-align: center;">12 unit</td>
-                    <td style="text-align: right;">Rp 180.000</td>
-                    <td style="text-align: right;">Rp 150.000</td>
-                    <td style="text-align: right; color: var(--primary); font-weight: bold;">Rp 30.000</td>
-                    <td style="text-align: center;"><span class="pill pill-green">16.67%</span></td>
-                </tr>
-                <tr>
-                    <td class="sku-badge">PRD-004</td>
-                    <td><strong>Kopi Susu Aren Botol</strong></td>
-                    <td style="text-align: center;">10 botol</td>
-                    <td style="text-align: right;">Rp 60.000</td>
-                    <td style="text-align: right;">Rp 40.000</td>
-                    <td style="text-align: right; color: var(--primary); font-weight: bold;">Rp 20.000</td>
-                    <td style="text-align: center;"><span class="pill pill-green">33.33%</span></td>
-                </tr>
+                <?php if (empty($detailProduk)): ?>
+                    <tr>
+                        <td colspan="8" style="text-align: center; color: var(--gray-400); padding: 24px;">
+                            Tidak ada data transaksi penjualan pada periode terpilih (<?= htmlspecialchars($tgl_mulai); ?> s/d <?= htmlspecialchars($tgl_akhir); ?>).
+                        </td>
+                    </tr>
+                <?php else: ?>
+                    <?php foreach ($detailProduk as $row): ?>
+                        <tr>
+                            <td class="sku-badge">PRD-<?= str_pad($row['id_produk'], 3, '0', STR_PAD_LEFT); ?></td>
+                            <td><strong><?= htmlspecialchars($row['nama_produk']); ?></strong></td>
+                            <td><?= htmlspecialchars($row['kategori'] ?? '-'); ?></td>
+                            <td style="text-align: center;"><strong><?= $row['total_qty']; ?> unit</strong></td>
+                            <td style="text-align: right;">Rp <?= number_format($row['total_penjualan'], 0, ',', '.'); ?></td>
+                            <td style="text-align: right;">Rp <?= number_format($row['total_hpp'], 0, ',', '.'); ?></td>
+                            <td style="text-align: right; color: var(--primary); font-weight: bold;">Rp <?= number_format($row['laba_kotor'], 0, ',', '.'); ?></td>
+                            <td style="text-align: center;"><span class="pill pill-green"><?= number_format($row['margin'], 2, ',', '.'); ?>%</span></td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </tbody>
         </table>
     </div>
 
     <div style="font-size: 0.72rem; color: var(--gray-400); text-align: center; padding-top: 10px;">
-        Data contoh untuk rancangan UI • Nilai bukan data operasional toko
+        Data teragregasi secara riil berdasarkan catatan penjualan dan harga pokok perolehan (HPP).
     </div>
 </div>
 

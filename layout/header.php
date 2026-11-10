@@ -160,8 +160,8 @@ if (function_exists('auth_can')) {
             <?php endif; ?>
 
             <!-- SECTION 5: REPORTS -->
-            <?php if (auth_can('laporan_penjualan.php') || auth_can('laporan_mutasi.php')): ?>
-            <div class="menu-section-group <?= in_array($activePage, ['laporan_penjualan', 'laporan_mutasi']) ? 'active-section' : ''; ?>" id="sec-reports">
+            <?php if (auth_can('laporan_penjualan.php') || auth_can('laporan_mutasi.php') || auth_can('peringatan_stok.php')): ?>
+            <div class="menu-section-group <?= in_array($activePage, ['laporan_penjualan', 'laporan_mutasi', 'peringatan_stok']) ? 'active-section' : ''; ?>" id="sec-reports">
                 <button class="menu-section-header" onclick="toggleSection('sec-reports')">
                     <span>REPORTS</span>
                     <span class="chevron-icon">▾</span>
@@ -169,14 +169,20 @@ if (function_exists('auth_can')) {
                 <div class="menu-section-content">
                     <?php if (auth_can('laporan_penjualan.php')): ?>
                     <a href="laporan_penjualan.php" class="menu-item <?= ($activePage === 'laporan_penjualan') ? 'active' : ''; ?>">
-                        <span class="menu-ico">📊</span>
+                        <span class="menu-ico">▨</span>
                         <span class="menu-text">Laporan Penjualan & Laba</span>
                     </a>
                     <?php endif; ?>
                     <?php if (auth_can('laporan_mutasi.php')): ?>
                     <a href="laporan_mutasi.php" class="menu-item <?= ($activePage === 'laporan_mutasi') ? 'active' : ''; ?>">
-                        <span class="menu-ico">📋</span>
+                        <span class="menu-ico">⇆</span>
                         <span class="menu-text">Laporan Mutasi Stok</span>
+                    </a>
+                    <?php endif; ?>
+                    <?php if (auth_can('peringatan_stok.php')): ?>
+                    <a href="peringatan_stok.php" class="menu-item <?= ($activePage === 'peringatan_stok') ? 'active' : ''; ?>">
+                        <span class="menu-ico">!</span>
+                        <span class="menu-text">Peringatan Stok & Expired</span>
                     </a>
                     <?php endif; ?>
                 </div>

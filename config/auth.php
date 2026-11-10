@@ -214,6 +214,7 @@ function auth_access_matrix(): array {
         'rekonsiliasi_kas.php'  => ['owner', 'kasir'],
         'laporan_penjualan.php' => ['owner', 'kasir'],
         'laporan_mutasi.php'    => ['owner', 'gudang'],
+        'peringatan_stok.php'   => ['owner', 'gudang'],
         'kelola_akun.php'       => ['owner'],
     ];
 }
@@ -231,6 +232,7 @@ function auth_page_labels(): array {
         'rekonsiliasi_kas.php'  => 'Rekonsiliasi Kas',
         'laporan_penjualan.php' => 'Laporan Penjualan &amp; Laba',
         'laporan_mutasi.php'    => 'Laporan Mutasi Stok',
+        'peringatan_stok.php'   => 'Peringatan Stok &amp; Kadaluwarsa',
         'kelola_akun.php'       => 'Kelola Akun &amp; Hak Akses',
     ];
 }

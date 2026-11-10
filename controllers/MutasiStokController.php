@@ -7,6 +7,7 @@
  */
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/ReportPdfHelper.php';
 
 class MutasiStokController {
     private $db;
@@ -31,7 +32,14 @@ class MutasiStokController {
             return ['valid' => false, 'message' => 'Tanggal awal dan akhir periode wajib ditentukan!'];
         }
 
-        if (strtotime($tgl_mulai) > strtotime($tgl_akhir)) {
+        $timeMulai = strtotime($tgl_mulai);
+        $timeAkhir = strtotime($tgl_akhir);
+
+        if ($timeMulai === false || $timeAkhir === false) {
+            return ['valid' => false, 'message' => 'Format tanggal yang dimasukkan tidak valid!'];
+        }
+
+        if ($timeMulai > $timeAkhir) {
             return ['valid' => false, 'message' => 'Tanggal mulai tidak boleh lebih besar dari tanggal akhir!'];
         }
 
@@ -42,7 +50,7 @@ class MutasiStokController {
     public function get_laporan_mutasi($tgl_mulai, $tgl_akhir) {
         $validasi = $this->validasi_periode($tgl_mulai, $tgl_akhir);
         if (!$validasi['valid']) {
-            return ['status' => false, 'message' => $validasi['message'], 'data' => []];
+            return ['status' => false, 'message' => $validasi['message'], 'total_data' => 0, 'data' => []];
         }
 
         $startDate = $tgl_mulai . ' 00:00:00';
@@ -84,5 +92,17 @@ class MutasiStokController {
             ORDER BY status_stok DESC, p.nama_produk ASC
         ");
         return $stmt->fetchAll();
+    }
+
+    // [PC-01.04] Mengunduh berkas laporan mutasi stok dalam format PDF
+    public function unduh_pdf($tgl_mulai, $tgl_akhir) {
+        $hasilMutasi = $this->get_laporan_mutasi($tgl_mulai, $tgl_akhir);
+        $ringkasanStok = $this->get_ringkasan_stok();
+        ReportPdfHelper::generateLaporanMutasi(
+            $tgl_mulai,
+            $tgl_akhir,
+            $hasilMutasi,
+            $ringkasanStok
+        );
     }
 }
