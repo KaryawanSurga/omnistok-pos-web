@@ -41,6 +41,7 @@ omnistok-web/
 │   ├── logo.png             # Logo resmi OmniStok POS
 │   └── qris_code.png        # Barcode QRIS dinamis pembayaran kasir
 ├── config/
+│   ├── auth.php             # Sesi login, verifikasi kata sandi, CSRF & hak akses
 │   └── database.php         # Koneksi PDO (MySQL / SQLite Fallback Serverless)
 ├── controllers/
 │   ├── AkunController.php       # [JK-SC01] Kontroler Akun & Hak Akses
@@ -49,6 +50,7 @@ omnistok-web/
 │   └── MutasiStokController.php # [FW-SC01] Kontroler Mutasi Stok & Riwayat
 ├── css/
 │   ├── style.css            # Stylesheet tema antarmuka hijau toska (#0d7a74)
+│   ├── login.css            # Gaya halaman login terminal otentikasi (UI-18)
 │   └── crud_shared.css      # Gaya bersama halaman CRUD (Diskon, Akun, Produk)
 ├── database/
 │   ├── schema.sql           # Skrip DDL Lengkap (MySQL InnoDB)
@@ -61,10 +63,12 @@ omnistok-web/
 │   └── footer.php           # JavaScript interaktivitas & responsive drawer
 ├── daftar_produk.php        # [UI-15 & UI-20] Katalog Master & Pembaruan Harga
 ├── index.php                # Portal Utama & Dashboard Integrasi Kelompok 6
-├── kelola_akun.php          # [UI-02, UI-03] Kelola Akun & Hak Akses
+├── kelola_akun.php          # [UI-02, UI-03] Kelola Akun & Hak Akses (khusus Pemilik Toko)
 ├── kelola_diskon.php        # [UI-06, UI-07] Kelola Diskon & Program Promosi
 ├── laporan_mutasi.php       # [UI-01, UI-09, UI-10] Laporan Mutasi & Peringatan Stok
 ├── laporan_penjualan.php    # [UI-05] Laporan Omzet, HPP, & Laba Kotor Toko
+├── login.php                # [UI-18] Halaman Login Terminal Otentikasi
+├── logout.php               # Mengakhiri sesi login & kembali ke halaman login
 ├── penerimaan_barang.php    # [UI-19] Pencatatan Faktur & Penerimaan Barang
 ├── penyesuaian_stok.php     # [UI-21] Penyesuaian Stok Fisik / Stock Opname
 ├── rekonsiliasi_kas.php     # [UI-14] Rekonsiliasi Kas Shift Kasir POS
@@ -88,6 +92,34 @@ omnistok-web/
    [http://localhost:8000](http://localhost:8000)
 
 *Catatan: Sistem secara otomatis menggunakan SQLite bawaan (`omnistok_local.sqlite`) dengan 17 tabel tersinkronisasi tanpa memerlukan instalasi database tambahan.*
+
+### 🔐 Login & Hak Akses
+
+Seluruh halaman operasional **wajib login**. Membuka halaman mana pun tanpa sesi
+aktif akan otomatis dialihkan ke `login.php` (UI-18), lalu dikembalikan ke halaman
+yang dituju setelah berhasil masuk.
+
+Akun demo yang tersedia pada data seed:
+
+| Peran (Role) | Email | Kata Sandi | Hak Akses |
+| --- | --- | --- | --- |
+| Pemilik Toko | `admin@omnistok.com` | `admin123` | Semua modul termasuk **Kelola Akun & Akses** |
+| Kasir | `kasir@omnistok.com` | `kasir123` | POS, rekonsiliasi kas, katalog, laporan |
+| Petugas Stok | `gudang@omnistok.com` | `gudang123` | Penerimaan barang, opname, retur, mutasi stok |
+
+Ketentuan akses:
+
+- **Kelola Akun & Hak Akses** hanya dapat dibuka oleh Pemilik Toko. Pengguna lain
+  menerima halaman **403 Akses Ditolak**, dan menu terkait disembunyikan dari
+  sidebar serta dashboard.
+- Pendaftaran akun baru hanya dilakukan oleh Pemilik Toko melalui `kelola_akun.php`
+  (tidak ada registrasi mandiri di halaman login).
+- Kata sandi disimpan sebagai hash **bcrypt**. Data lama berisi kata sandi teks
+  biasa tetap dapat login dan otomatis ditingkatkan ke bcrypt saat login berhasil.
+- Formulir login dilindungi token **CSRF**, dan sesi memakai cookie `HttpOnly`
+  dengan `SameSite=Lax`.
+- Tombol **Keluar dari Sistem** pada menu profil kanan atas mengakhiri sesi dan
+  menghapus cookie sesi.
 
 ### Jika memakai MySQL/MariaDB
 

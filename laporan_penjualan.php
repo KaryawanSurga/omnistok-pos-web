@@ -6,7 +6,9 @@
  * Disinkronkan 100% dengan Sketsa UI Modul 2
  */
 
-require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/auth.php';
+auth_require_login();
+
 $db = Database::getInstance();
 
 $tgl_mulai = isset($_GET['tgl_mulai']) ? $_GET['tgl_mulai'] : '2026-10-14';

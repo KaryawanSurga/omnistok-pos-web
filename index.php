@@ -5,7 +5,9 @@
  * Disinkronkan 100% dengan Modul 2 SDD dan Modul 1 SRS
  */
 
-require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/auth.php';
+auth_require_login();
+
 $db = Database::getInstance();
 
 $countAkun = $db->query("SELECT COUNT(*) FROM akun")->fetchColumn();
@@ -28,7 +30,8 @@ require_once __DIR__ . '/layout/header.php';
 </div>
 
 <!-- STATS OVERVIEW CARDS (CLICKABLE) -->
-<div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 26px;">
+<div class="stats-grid" style="grid-template-columns: repeat(<?= auth_is_owner() ? 4 : 3; ?>, 1fr); margin-bottom: 26px;">
+    <?php if (auth_is_owner()): ?>
     <a href="kelola_akun.php" class="stat-box" style="text-decoration: none; color: inherit;">
         <div class="stat-info">
             <div class="stat-label">TOTAL PENGGUNA</div>
@@ -37,6 +40,7 @@ require_once __DIR__ . '/layout/header.php';
         </div>
         <span class="pill pill-teal">Kelola &rarr;</span>
     </a>
+    <?php endif; ?>
 
     <a href="daftar_produk.php" class="stat-box" style="text-decoration: none; color: inherit;">
         <div class="stat-info">
@@ -71,11 +75,12 @@ require_once __DIR__ . '/layout/header.php';
     <h2 style="font-size: 1.18rem; font-weight: 700; color: var(--dark);">
         Daftar Modul & Fitur Terpadu Kelompok 6 (Kelas SI-G)
     </h2>
-    <span class="pill pill-teal" style="font-size: 0.76rem;">11 Modul 100% Aktif &amp; Fungsional</span>
+    <span class="pill pill-teal" style="font-size: 0.76rem;"><?= auth_is_owner() ? '11' : '10'; ?> Modul 100% Aktif &amp; Fungsional</span>
 </div>
 
 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 18px; margin-bottom: 30px;">
-    <!-- 1. Justin Kelvin: Kelola Akun -->
+    <!-- 1. Justin Kelvin: Kelola Akun (khusus Pemilik Toko) -->
+    <?php if (auth_is_owner()): ?>
     <div class="card-box" style="margin-bottom: 0; display: flex; flex-direction: column;">
         <div class="card-box-header">
             <div>
@@ -92,6 +97,7 @@ require_once __DIR__ . '/layout/header.php';
         </div>
         <a href="kelola_akun.php" class="btn btn-primary" style="width: 100%;">Buka Kelola Akun &rarr;</a>
     </div>
+    <?php endif; ?>
 
     <!-- 2. Justin Kelvin: Daftar Produk -->
     <div class="card-box" style="margin-bottom: 0; display: flex; flex-direction: column;">

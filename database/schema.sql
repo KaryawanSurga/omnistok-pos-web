@@ -211,9 +211,9 @@ CREATE TABLE IF NOT EXISTS riwayat_harga (
 -- ==============================================================================
 
 INSERT INTO akun (id_akun, email, nama_lengkap, password_hash, hak_akses, role, status_aktif, last_login_time) VALUES
-(1, 'admin@omnistok.com', 'Administrator Toko', '$2y$10$e8oYqW5aLkm6b/Wc7jM9I.k4bHqyvA7zE3uJkQk7w7.qL6rG', 'SUPER_ADMIN', 'Pemilik Toko', TRUE, NOW()),
-(2, 'kasir@omnistok.com', 'Kasir Utama', '$2y$10$e8oYqW5aLkm6b/Wc7jM9I.k4bHqyvA7zE3uJkQk7w7.qL6rG', 'KASIR_POS', 'Kasir', TRUE, NOW()),
-(3, 'gudang@omnistok.com', 'Petugas Gudang', '$2y$10$e8oYqW5aLkm6b/Wc7jM9I.k4bHqyvA7zE3uJkQk7w7.qL6rG', 'PETUGAS_GUDANG', 'Petugas Stok', TRUE, NOW())
+(1, 'admin@omnistok.com', 'Administrator Toko', '$2y$10$WVqvW/3LO1zB5w7M.bKxV.t0qAz5Ol0YtZZhUWeEiJ9Cje4WRbxy.', 'SUPER_ADMIN', 'Pemilik Toko', TRUE, NOW()),
+(2, 'kasir@omnistok.com', 'Kasir Utama', '$2y$10$HLbRFQGH2/6LEA2ryKb2lek3z7xp8Vib82zC9q2j5BlhhVezJWx66', 'KASIR_POS', 'Kasir', TRUE, NOW()),
+(3, 'gudang@omnistok.com', 'Petugas Gudang', '$2y$10$K/h.ft7./bCpxhM9oiR0mOsyi.ErVkbScPQAzf3sY5bOmfLVte9Ta', 'PETUGAS_GUDANG', 'Petugas Stok', TRUE, NOW())
 ON DUPLICATE KEY UPDATE email=VALUES(email);
 
 INSERT INTO produk (id_produk, nama_produk, kategori, deskripsi, harga_jual, harga_modal) VALUES

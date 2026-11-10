@@ -5,6 +5,11 @@
  * 100% Sesuai Sketsa Wireframe UI Modul 2 (UI-01 s/d UI-22)
  */
 
+if (!function_exists('auth_user')) {
+    require_once __DIR__ . '/../config/auth.php';
+}
+auth_require_login();
+
 if (!isset($activePage)) $activePage = 'dashboard';
 if (!isset($pageTitle)) $pageTitle = 'Dashboard';
 if (!isset($moduleBreadcrumb)) $moduleBreadcrumb = 'MAIN / DASHBOARD';
@@ -12,15 +17,15 @@ if (!isset($userName)) $userName = 'Zainal Maarif';
 if (!isset($userRole)) $userRole = 'Petugas Stok Gudang';
 if (!isset($userInitials)) $userInitials = 'ZM';
 
-// Handle user role switcher via query parameter or cookie
-if (isset($_GET['switch_user'])) {
-    $sw = $_GET['switch_user'];
-    if ($sw === 'ZM') { $userName = 'Zainal Maarif'; $userRole = 'Petugas Stok Gudang'; $userInitials = 'ZM'; }
-    elseif ($sw === 'BS') { $userName = 'Budi Santoso'; $userRole = 'Kasir Utama • Jakarta'; $userInitials = 'BS'; }
-    elseif ($sw === 'FF') { $userName = 'Ferdyansah'; $userRole = 'Pemilik Toko (Owner)'; $userInitials = 'FF'; }
-    elseif ($sw === 'JK') { $userName = 'Justin Kelvin'; $userRole = 'Supervisor Toko'; $userInitials = 'JK'; }
-    elseif ($sw === 'FW') { $userName = 'Fauzi Al Wahid'; $userRole = 'Petugas Logistik'; $userInitials = 'FW'; }
+// Identitas pengguna selalu mengikuti sesi login aktif
+$authUser = function_exists('auth_user') ? auth_user() : null;
+if ($authUser) {
+    $userName     = ($authUser['nama_lengkap'] !== '') ? $authUser['nama_lengkap'] : $authUser['email'];
+    $userRole     = ($authUser['role'] !== '') ? $authUser['role'] : $authUser['hak_akses'];
+    $userInitials = function_exists('auth_initials') ? auth_initials($userName) : strtoupper(substr($userName, 0, 2));
 }
+
+$canManageAccounts = function_exists('auth_is_owner') ? auth_is_owner() : true;
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -144,7 +149,8 @@ if (isset($_GET['switch_user'])) {
                 </div>
             </div>
 
-            <!-- SECTION 6: USER & SETTINGS -->
+            <!-- SECTION 6: USER & SETTINGS (khusus Pemilik Toko) -->
+            <?php if ($canManageAccounts): ?>
             <div class="menu-section-group <?= ($activePage === 'kelola_akun') ? 'active-section' : ''; ?>" id="sec-user">
                 <button class="menu-section-header" onclick="toggleSection('sec-user')">
                     <span>USER & SETTINGS</span>
@@ -157,6 +163,7 @@ if (isset($_GET['switch_user'])) {
                     </a>
                 </div>
             </div>
+            <?php endif; ?>
         </nav>
 
         <!-- FOOTER SIDEBAR RESMI MODUL 2 -->
@@ -224,9 +231,9 @@ if (isset($_GET['switch_user'])) {
                     </div>
                 </div>
 
-                <!-- USER PROFILE WITH ROLE SWITCHER -->
+                <!-- USER PROFILE -->
                 <div class="user-profile-wrapper">
-                    <div class="user-profile" onclick="toggleUserDropdown()" title="Klik untuk ganti peran">
+                    <div class="user-profile" onclick="toggleUserDropdown()" title="Menu akun">
                         <div class="avatar-circle"><?= htmlspecialchars($userInitials); ?></div>
                         <div class="user-info">
                             <span class="user-name"><?= htmlspecialchars($userName); ?></span>
@@ -235,21 +242,18 @@ if (isset($_GET['switch_user'])) {
                         <span class="user-chevron">▾</span>
                     </div>
                     <div class="user-dropdown" id="userDropdown">
-                        <div class="dropdown-header">Ganti Pengguna Simulasi:</div>
-                        <a href="?switch_user=ZM" class="dropdown-item <?= ($userInitials === 'ZM') ? 'active-user' : ''; ?>">
-                            <strong>Zainal Maarif</strong> (Petugas Stok Gudang)
-                        </a>
-                        <a href="?switch_user=BS" class="dropdown-item <?= ($userInitials === 'BS') ? 'active-user' : ''; ?>">
-                            <strong>Budi Santoso</strong> (Kasir Utama • Jakarta)
-                        </a>
-                        <a href="?switch_user=FF" class="dropdown-item <?= ($userInitials === 'FF') ? 'active-user' : ''; ?>">
-                            <strong>Ferdyansah</strong> (Pemilik Toko / Owner)
-                        </a>
-                        <a href="?switch_user=JK" class="dropdown-item <?= ($userInitials === 'JK') ? 'active-user' : ''; ?>">
-                            <strong>Justin Kelvin</strong> (Supervisor Toko)
-                        </a>
-                        <a href="?switch_user=FW" class="dropdown-item <?= ($userInitials === 'FW') ? 'active-user' : ''; ?>">
-                            <strong>Fauzi Al Wahid</strong> (Petugas Logistik)
+                        <div class="dropdown-header">Masuk sebagai:</div>
+                        <div class="dropdown-item" style="cursor: default;">
+                            <strong><?= htmlspecialchars($userName); ?></strong>
+                            <div style="font-size: 0.74rem; color: var(--gray-500); margin-top: 2px;">
+                                <?= htmlspecialchars((string) ($authUser['email'] ?? '')); ?>
+                            </div>
+                            <div style="font-size: 0.72rem; color: var(--gray-400); margin-top: 2px;">
+                                <?= htmlspecialchars((string) ($authUser['hak_akses'] ?? '')); ?>
+                            </div>
+                        </div>
+                        <a href="logout.php" class="dropdown-item" style="color: #dc2626;">
+                            <strong>⏻ Keluar dari Sistem</strong>
                         </a>
                     </div>
                 </div>

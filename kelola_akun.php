@@ -16,6 +16,10 @@ declare(strict_types=1);
 
 date_default_timezone_set('Asia/Jakarta');
 
+require_once __DIR__ . '/config/auth.php';
+auth_require_login();
+auth_require_owner();
+
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
@@ -222,6 +226,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $data = bacaInputAkun($_POST, $action === 'tambah');
 
+            $currentUserId = (int) (auth_user()['id_akun'] ?? 0);
+            if ($action === 'ubah' && $idAkun === $currentUserId && (int) $data['status_aktif'] !== 1) {
+                throw new InvalidArgumentException('Anda tidak dapat menonaktifkan akun yang sedang digunakan.');
+            }
+
             // Email harus unik, kecuali untuk akun yang sedang diubah.
             $stmt = $db->prepare('SELECT id_akun FROM akun WHERE email = ? AND id_akun <> ?');
             $stmt->execute([$data['email'], $idAkun]);
@@ -277,6 +286,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
             }
 
+            if ($action === 'ubah' && $idAkun === $currentUserId) {
+                $_SESSION['auth_user']['email']        = $data['email'];
+                $_SESSION['auth_user']['nama_lengkap'] = $data['nama_lengkap'];
+                $_SESSION['auth_user']['role']         = $data['role'];
+                $_SESSION['auth_user']['hak_akses']    = $hakAkses;
+            }
+
             redirectWithFlash('success', "Akun '{$data['nama_lengkap']}' berhasil diperbarui.");
         }
 
@@ -291,6 +307,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $akun = $stmt->fetch();
             if ($akun === false) {
                 throw new InvalidArgumentException('Akun yang akan dihapus tidak ditemukan.');
+            }
+
+            if ($idAkun === (int) (auth_user()['id_akun'] ?? 0)) {
+                throw new InvalidArgumentException('Anda tidak dapat menghapus akun yang sedang digunakan.');
             }
 
             if ($akun['role'] === 'Pemilik Toko') {

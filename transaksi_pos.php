@@ -6,8 +6,9 @@
  * Disinkronkan 100% dengan Sketsa UI Modul 2
  */
 
-require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/controllers/TransaksiController.php';
+auth_require_login();
 
 $db  = Database::getInstance();
 $trx = new TransaksiController();

@@ -1,0 +1,405 @@
+/* ==============================================================================
+   Halaman Login Terminal Otentikasi [UI-18]
+   OmniStok POS - Kelompok 6
+   ============================================================================== */
+
+:root {
+    --login-primary: #0d7a74;
+    --login-primary-dark: #0a655f;
+    --login-bg: #f4f6f9;
+    --login-ink: #0f172a;
+    --login-muted: #64748b;
+    --login-line: #e2e8f0;
+    --login-info-bg: #eef1fb;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    min-height: 100vh;
+    background: var(--login-bg);
+    color: var(--login-ink);
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 116px 24px 96px;
+    position: relative;
+}
+
+/* ---------------------------------------------------------------- BRAND ---- */
+.login-brand {
+    position: absolute;
+    top: 30px;
+    left: 40px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.brand-mark {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    background: linear-gradient(145deg, #128a83, #0b6964);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 18px rgba(13, 122, 116, 0.24);
+}
+
+.brand-mark svg {
+    width: 25px;
+    height: 25px;
+}
+
+.brand-word {
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    color: #0c3b38;
+}
+
+/* ----------------------------------------------------------------- CARD ---- */
+.login-card {
+    position: relative;
+    width: 100%;
+    max-width: 566px;
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 42px 46px 38px;
+    box-shadow: 0 22px 55px rgba(15, 23, 42, 0.09), 0 2px 6px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+}
+
+.card-accent {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 5px;
+    background: var(--login-primary);
+}
+
+.card-head {
+    text-align: center;
+    margin-bottom: 26px;
+}
+
+.terminal-icon {
+    width: 62px;
+    height: 62px;
+    margin: 0 auto 18px;
+    border-radius: 12px;
+    background: linear-gradient(145deg, #10837c, #0b6b66);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 10px 20px rgba(13, 122, 116, 0.22);
+}
+
+.terminal-icon svg {
+    width: 32px;
+    height: 32px;
+}
+
+.eyebrow {
+    font-size: 0.73rem;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #3f5f5d;
+    margin-bottom: 10px;
+}
+
+.card-head h1 {
+    margin: 0 0 10px;
+    font-size: 1.85rem;
+    line-height: 1.2;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--login-ink);
+}
+
+.subtitle {
+    margin: 0 auto;
+    max-width: 100%;
+    font-size: 0.92rem;
+    line-height: 1.55;
+    color: var(--login-muted);
+}
+
+/* ---------------------------------------------------------------- ALERT ---- */
+.alert-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+    border-radius: 6px;
+    padding: 11px 14px;
+    font-size: 0.84rem;
+    line-height: 1.45;
+    margin-bottom: 18px;
+}
+
+.alert-error svg {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 auto;
+    margin-top: 1px;
+}
+
+/* ----------------------------------------------------------------- FORM ---- */
+.field-label-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.field-label-row label {
+    font-size: 0.83rem;
+    font-weight: 700;
+    color: #334155;
+    letter-spacing: 0.005em;
+}
+
+.field-meta {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #94a3b8;
+}
+
+.input-group {
+    position: relative;
+    margin-bottom: 18px;
+}
+
+.input-icon {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    color: #94a3b8;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.input-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+.input-group input {
+    width: 100%;
+    height: 52px;
+    border: 1px solid var(--login-line);
+    border-radius: 6px;
+    background: #ffffff;
+    color: var(--login-ink);
+    font-family: inherit;
+    font-size: 0.95rem;
+    padding: 0 46px 0 46px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input-group input::placeholder {
+    color: #94a3b8;
+}
+
+.input-group input:focus {
+    outline: none;
+    border-color: var(--login-primary);
+    box-shadow: 0 0 0 3px rgba(13, 122, 116, 0.13);
+}
+
+.toggle-pass {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: 0;
+    border-radius: 6px;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 0;
+}
+
+.toggle-pass:hover {
+    color: var(--login-primary);
+    background: #f1f5f9;
+}
+
+.toggle-pass svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* --------------------------------------------------------------- BUTTON ---- */
+.btn-login {
+    width: 100%;
+    height: 52px;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--login-primary);
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
+}
+
+.btn-login svg {
+    width: 20px;
+    height: 20px;
+}
+
+.btn-login:hover {
+    background: var(--login-primary-dark);
+    box-shadow: 0 10px 20px rgba(13, 122, 116, 0.18);
+}
+
+.btn-login:active {
+    transform: translateY(1px);
+}
+
+.btn-login:focus-visible {
+    outline: 3px solid rgba(13, 122, 116, 0.35);
+    outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------- INFO BOX ---- */
+.info-box {
+    margin-top: 22px;
+    background: var(--login-info-bg);
+    border-radius: 8px;
+    padding: 17px 20px 18px;
+    color: #475569;
+    font-size: 0.86rem;
+    line-height: 1.62;
+}
+
+.info-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 7px;
+}
+
+.info-title svg {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 auto;
+    color: #0b6b66;
+}
+
+.info-box p {
+    margin: 0;
+}
+
+.info-box strong {
+    color: #0f172a;
+    font-weight: 700;
+}
+
+.info-box em {
+    font-style: italic;
+}
+
+.info-help {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 13px;
+    font-size: 0.85rem;
+    color: #334155;
+}
+
+.info-help svg {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 auto;
+    margin-top: 2px;
+    color: #0b6b66;
+}
+
+/* --------------------------------------------------------------- FOOTER ---- */
+.login-footer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 44px;
+    background: #0b0f10;
+}
+
+/* ----------------------------------------------------------- RESPONSIVE ---- */
+@media (max-width: 640px) {
+    body {
+        justify-content: flex-start;
+        padding: 96px 16px 96px;
+    }
+
+    .login-brand {
+        top: 22px;
+        left: 22px;
+        gap: 11px;
+    }
+
+    .brand-mark {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+    }
+
+    .brand-word {
+        font-size: 1.3rem;
+    }
+
+    .login-card {
+        padding: 34px 24px 30px;
+    }
+
+    .card-head h1 {
+        font-size: 1.55rem;
+    }
+
+    .subtitle {
+        font-size: 0.9rem;
+    }
+}

@@ -21,6 +21,9 @@ declare(strict_types=1);
 
 date_default_timezone_set('Asia/Jakarta');
 
+require_once __DIR__ . '/config/auth.php';
+auth_require_login();
+
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
@@ -74,12 +77,12 @@ function tanggalValid(string $value): bool
     return $date instanceof DateTimeImmutable && $date->format('Y-m-d') === $value;
 }
 
-function formatRupiah(float|int $value): string
+function formatRupiah(float|int|string $value): string
 {
     return 'Rp ' . number_format((float) $value, 0, ',', '.');
 }
 
-function formatPersen(float|int $value): string
+function formatPersen(float|int|string $value): string
 {
     $formatted = number_format((float) $value, 2, ',', '.');
 
