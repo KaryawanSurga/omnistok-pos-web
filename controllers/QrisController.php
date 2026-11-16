@@ -227,18 +227,32 @@ final class QrisController
     /** NMID merchant diambil dari merchant account information (tag 26-51). */
     public static function extractNmid(array $fields): string
     {
+        $fallback = '';
+
         for ($tag = 26; $tag <= 51; $tag++) {
             $key = str_pad((string) $tag, 2, '0', STR_PAD_LEFT);
             if (!isset($fields[$key])) {
                 continue;
             }
+
             $sub = self::tlv($fields[$key])['fields'];
-            if (($sub['01'] ?? '') !== '') {
-                return $sub['01'];
+
+            // NMID selalu berawalan "ID" + deretan angka (contoh: ID1025421996014).
+            // Pada QRIS nasional, NMID berada di blok ber-domain ID.CO.QRIS.WWW,
+            // umumnya pada sub-tag 02, sebagian penerbit memakai sub-tag 01.
+            foreach (['02', '01'] as $subTag) {
+                $nilai = (string) ($sub[$subTag] ?? '');
+                if (preg_match('/^ID[0-9]{10,20}$/i', $nilai) === 1) {
+                    return strtoupper($nilai);
+                }
+            }
+
+            if ($fallback === '') {
+                $fallback = (string) ($sub['02'] ?? $sub['01'] ?? '');
             }
         }
 
-        return '';
+        return $fallback;
     }
 
     /** Domain acquirer (mis. ID.CO.QRIS.WWW) dari merchant account information. */

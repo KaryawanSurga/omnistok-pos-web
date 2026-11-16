@@ -15,8 +15,8 @@
 return [
     // Identitas merchant (untuk validasi & tampilan)
     'nmid'           => 'ID1025421996014',
-    'merchant_name'  => 'FERDYANSAH',
-    'merchant_city'  => 'KP.CABANG LIO',
+    'merchant_name'  => 'FERDYANSAH, Fashion',
+    'merchant_city'  => 'BEKASI',
     'category'       => 'FASHION',
 
     // Berkas penyimpanan payload hasil pemindaian

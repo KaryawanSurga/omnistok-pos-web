@@ -149,11 +149,15 @@ Merchant terdaftar:
 | Data | Nilai |
 | --- | --- |
 | NMID | `ID1025421996014` |
-| Nama Merchant | `FERDYANSAH` |
-| Cabang / Kota | `KP.CABANG LIO` |
+| Nama Merchant | `FERDYANSAH, Fashion` |
+| Kota | `BEKASI` (kode pos `17530`) |
 | Kategori (MCC) | `FASHION` |
+| Acquirer | `COM.GO-JEK.WWW` |
 
-Cara mengaktifkan (sekali saja):
+Payload merchant sudah terisi di `database/qris_merchant.json` (hasil pembacaan QR
+poster dan tangkapan layar aplikasi merchant, keduanya identik dan CRC-nya valid).
+
+Cara memuat ulang atau mengganti QR merchant (bila poster berganti):
 
 1. Buka **Pembayaran QRIS** sebagai Pemilik Toko.
 2. Pilih gambar QRIS resmi milik toko (poster atau tangkapan layar aplikasi merchant).
