@@ -104,14 +104,31 @@ Akun demo yang tersedia pada data seed:
 | Peran (Role) | Email | Kata Sandi | Hak Akses |
 | --- | --- | --- | --- |
 | Pemilik Toko | `admin@omnistok.com` | `admin123` | Semua modul termasuk **Kelola Akun & Akses** |
-| Kasir | `kasir@omnistok.com` | `kasir123` | POS, rekonsiliasi kas, katalog, laporan |
-| Petugas Stok | `gudang@omnistok.com` | `gudang123` | Penerimaan barang, opname, retur, mutasi stok |
+| Kasir | `kasir@omnistok.com` | `kasir123` | POS, rekonsiliasi kas, laporan penjualan |
+| Petugas Stok | `gudang@omnistok.com` | `gudang123` | Inventori, katalog produk, peringatan stok |
+
+Matriks navigasi per peran:
+
+| Halaman | Pemilik Toko | Kasir | Petugas Stok |
+| --- | :---: | :---: | :---: |
+| Dashboard | Ya | Ya | Ya |
+| Daftar Produk & Pembaruan Harga | Ya | - | Ya |
+| Kelola Diskon & Promo | Ya | - | - |
+| Penerimaan Barang | Ya | - | Ya |
+| Penyesuaian Stok (Opname) | Ya | - | Ya |
+| Retur Barang ke Pemasok | Ya | - | Ya |
+| Transaksi Penjualan (Kasir POS) | Ya | Ya | - |
+| Rekonsiliasi Kas | Ya | Ya | - |
+| Laporan Penjualan & Laba | Ya | Ya | - |
+| Laporan Mutasi Stok | Ya | - | Ya |
+| Peringatan Stok & Kadaluwarsa | Ya | - | Ya |
+| Kelola Akun & Akses | Ya | - | - |
 
 Ketentuan akses:
 
-- **Kelola Akun & Hak Akses** hanya dapat dibuka oleh Pemilik Toko. Pengguna lain
-  menerima halaman **403 Akses Ditolak**, dan menu terkait disembunyikan dari
-  sidebar serta dashboard.
+- Halaman di luar matriks di atas menerima **403 Akses Ditolak**, dan menu terkait
+  otomatis disembunyikan dari sidebar, kartu dashboard, serta notifikasi.
+- **Kelola Akun & Hak Akses** hanya dapat dibuka oleh Pemilik Toko.
 - Pendaftaran akun baru hanya dilakukan oleh Pemilik Toko melalui `kelola_akun.php`
   (tidak ada registrasi mandiri di halaman login).
 - Kata sandi disimpan sebagai hash **bcrypt**. Data lama berisi kata sandi teks

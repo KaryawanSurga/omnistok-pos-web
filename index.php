@@ -15,6 +15,12 @@ $countStok = $db->query("SELECT COALESCE(SUM(jumlah_stok), 0) FROM stok")->fetch
 $countPenerimaan = $db->query("SELECT COUNT(*) FROM penerimaan")->fetchColumn();
 $countPenjualan = $db->query("SELECT COUNT(*) FROM transaksi")->fetchColumn();
 $totalOmset = $db->query("SELECT COALESCE(SUM(total_harga), 0) FROM transaksi")->fetchColumn();
+$countRekonsiliasi = $db->query("SELECT COUNT(*) FROM rekonsiliasi")->fetchColumn();
+$countMutasi = $db->query("SELECT COUNT(*) FROM mutasi_stok")->fetchColumn();
+
+$roleKey = auth_role_key();
+$modulePages = array_diff(array_keys(auth_access_matrix()), ['index.php']);
+$moduleCount = count(array_filter($modulePages, static fn (string $p): bool => auth_can($p)));
 
 $activePage = 'dashboard';
 $pageTitle = 'Dashboard Utama Portal Integrasi';
@@ -28,9 +34,9 @@ require_once __DIR__ . '/layout/header.php';
     <p class="page-subtitle">Portal Implementasi Web OOP & Evaluasi Dokumen Modul 3 Praktikum Rekayasa Sistem Informasi (FILKOM UB)</p>
 </div>
 
-<!-- STATS OVERVIEW CARDS (CLICKABLE) -->
-<div class="stats-grid" style="grid-template-columns: repeat(<?= auth_is_owner() ? 4 : 3; ?>, 1fr); margin-bottom: 26px;">
-    <?php if (auth_is_owner()): ?>
+<!-- STATS OVERVIEW CARDS (CLICKABLE, SESUAI HAK AKSES) -->
+<div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 26px;">
+    <?php if ($roleKey === 'owner'): ?>
     <a href="kelola_akun.php" class="stat-box" style="text-decoration: none; color: inherit;">
         <div class="stat-info">
             <div class="stat-label">TOTAL PENGGUNA</div>
@@ -41,6 +47,7 @@ require_once __DIR__ . '/layout/header.php';
     </a>
     <?php endif; ?>
 
+    <?php if (auth_can('daftar_produk.php')): ?>
     <a href="daftar_produk.php" class="stat-box" style="text-decoration: none; color: inherit;">
         <div class="stat-info">
             <div class="stat-label">KATALOG PRODUK</div>
@@ -49,7 +56,9 @@ require_once __DIR__ . '/layout/header.php';
         </div>
         <span class="pill pill-teal">Katalog &rarr;</span>
     </a>
+    <?php endif; ?>
 
+    <?php if (auth_can('laporan_mutasi.php')): ?>
     <a href="laporan_mutasi.php" class="stat-box" style="text-decoration: none; color: inherit;">
         <div class="stat-info">
             <div class="stat-label">TOTAL STOK FISIK</div>
@@ -58,7 +67,9 @@ require_once __DIR__ . '/layout/header.php';
         </div>
         <span class="pill pill-green">Rak Gudang &rarr;</span>
     </a>
+    <?php endif; ?>
 
+    <?php if (auth_can('penerimaan_barang.php')): ?>
     <a href="penerimaan_barang.php" class="stat-box" style="text-decoration: none; color: inherit;">
         <div class="stat-info">
             <div class="stat-label">FAKTUR DITERIMA</div>
@@ -67,6 +78,47 @@ require_once __DIR__ . '/layout/header.php';
         </div>
         <span class="pill pill-teal">Goods Receipt &rarr;</span>
     </a>
+    <?php endif; ?>
+
+    <?php if ($roleKey === 'kasir'): ?>
+    <a href="transaksi_pos.php" class="stat-box" style="text-decoration: none; color: inherit;">
+        <div class="stat-info">
+            <div class="stat-label">TOTAL TRANSAKSI</div>
+            <div class="stat-value"><?= number_format($countPenjualan); ?> Trx</div>
+            <div class="stat-sub">Riwayat Penjualan Kasir</div>
+        </div>
+        <span class="pill pill-teal">Kasir POS &rarr;</span>
+    </a>
+
+    <a href="laporan_penjualan.php" class="stat-box" style="text-decoration: none; color: inherit;">
+        <div class="stat-info">
+            <div class="stat-label">TOTAL OMZET</div>
+            <div class="stat-value" style="font-size: 1.35rem;">Rp <?= number_format((float) $totalOmset, 0, ',', '.'); ?></div>
+            <div class="stat-sub">Akumulasi Penjualan</div>
+        </div>
+        <span class="pill pill-green">Laporan &rarr;</span>
+    </a>
+
+    <a href="rekonsiliasi_kas.php" class="stat-box" style="text-decoration: none; color: inherit;">
+        <div class="stat-info">
+            <div class="stat-label">TUTUP SHIFT</div>
+            <div class="stat-value"><?= number_format($countRekonsiliasi); ?> Shift</div>
+            <div class="stat-sub">Rekonsiliasi Kas Tercatat</div>
+        </div>
+        <span class="pill pill-teal">Rekonsiliasi &rarr;</span>
+    </a>
+    <?php endif; ?>
+
+    <?php if ($roleKey === 'gudang'): ?>
+    <a href="laporan_mutasi.php" class="stat-box" style="text-decoration: none; color: inherit;">
+        <div class="stat-info">
+            <div class="stat-label">MUTASI STOK</div>
+            <div class="stat-value"><?= number_format($countMutasi); ?> Baris</div>
+            <div class="stat-sub">Riwayat Keluar-Masuk Rak</div>
+        </div>
+        <span class="pill pill-green">Mutasi &rarr;</span>
+    </a>
+    <?php endif; ?>
 </div>
 
 <!-- GRID MODUL KELOMPOK 6 -->
@@ -74,7 +126,7 @@ require_once __DIR__ . '/layout/header.php';
     <h2 style="font-size: 1.18rem; font-weight: 700; color: var(--dark);">
         Daftar Modul & Fitur Terpadu Kelompok 6 (Kelas SI-G)
     </h2>
-    <span class="pill pill-teal" style="font-size: 0.76rem;"><?= auth_is_owner() ? '11' : '10'; ?> Modul 100% Aktif &amp; Fungsional</span>
+    <span class="pill pill-teal" style="font-size: 0.76rem;"><?= $moduleCount; ?> Modul Sesuai Hak Akses</span>
 </div>
 
 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 18px; margin-bottom: 30px;">
@@ -99,6 +151,7 @@ require_once __DIR__ . '/layout/header.php';
     <?php endif; ?>
 
     <!-- 2. Justin Kelvin: Daftar Produk -->
+    <?php if (auth_can('daftar_produk.php')): ?>
     <div class="card-box" style="margin-bottom: 0; display: flex; flex-direction: column;">
         <div class="card-box-header">
             <div>
@@ -115,8 +168,10 @@ require_once __DIR__ . '/layout/header.php';
         </div>
         <a href="daftar_produk.php" class="btn btn-primary" style="width: 100%;">Buka Daftar Produk &rarr;</a>
     </div>
+    <?php endif; ?>
 
     <!-- 3. Justin Kelvin: Kelola Diskon -->
+    <?php if (auth_can('kelola_diskon.php')): ?>
     <div class="card-box" style="margin-bottom: 0; display: flex; flex-direction: column;">
         <div class="card-box-header">
             <div>
@@ -133,8 +188,10 @@ require_once __DIR__ . '/layout/header.php';
         </div>
         <a href="kelola_diskon.php" class="btn btn-primary" style="width: 100%;">Buka Kelola Diskon &rarr;</a>
     </div>
+    <?php endif; ?>
 
     <!-- 4. Zainal Maarif: Penerimaan Barang -->
+    <?php if (auth_can('penerimaan_barang.php')): ?>
     <div class="card-box" style="margin-bottom: 0; display: flex; flex-direction: column;">
         <div class="card-box-header">
             <div>
@@ -151,8 +208,10 @@ require_once __DIR__ . '/layout/header.php';
         </div>
         <a href="penerimaan_barang.php" class="btn btn-primary" style="width: 100%;">Buka Penerimaan Barang &rarr;</a>
     </div>
+    <?php endif; ?>
 
     <!-- 5. Zainal Maarif: Penyesuaian Stok (Opname) -->
+    <?php if (auth_can('penyesuaian_stok.php')): ?>
     <div class="card-box" style="margin-bottom: 0; display: flex; flex-direction: column;">
         <div class="card-box-header">
             <div>
@@ -169,8 +228,10 @@ require_once __DIR__ . '/layout/header.php';
         </div>
         <a href="penyesuaian_stok.php" class="btn btn-primary" style="width: 100%;">Buka Penyesuaian Stok &rarr;</a>
     </div>
+    <?php endif; ?>
 
     <!-- 6. Zainal Maarif: Retur Barang -->
+    <?php if (auth_can('retur_barang.php')): ?>
     <div class="card-box" style="margin-bottom: 0; display: flex; flex-direction: column;">
         <div class="card-box-header">
             <div>
@@ -187,8 +248,10 @@ require_once __DIR__ . '/layout/header.php';
         </div>
         <a href="retur_barang.php" class="btn btn-primary" style="width: 100%;">Buka Retur Barang &rarr;</a>
     </div>
+    <?php endif; ?>
 
     <!-- 7. Ferdyansah: Transaksi Kasir POS -->
+    <?php if (auth_can('transaksi_pos.php')): ?>
     <div class="card-box" style="margin-bottom: 0; display: flex; flex-direction: column;">
         <div class="card-box-header">
             <div>
@@ -205,8 +268,10 @@ require_once __DIR__ . '/layout/header.php';
         </div>
         <a href="transaksi_pos.php" class="btn btn-primary" style="width: 100%;">Buka Kasir POS &rarr;</a>
     </div>
+    <?php endif; ?>
 
     <!-- 8. Ferdyansah: Rekonsiliasi Kas -->
+    <?php if (auth_can('rekonsiliasi_kas.php')): ?>
     <div class="card-box" style="margin-bottom: 0; display: flex; flex-direction: column;">
         <div class="card-box-header">
             <div>
@@ -223,8 +288,10 @@ require_once __DIR__ . '/layout/header.php';
         </div>
         <a href="rekonsiliasi_kas.php" class="btn btn-primary" style="width: 100%;">Buka Rekonsiliasi Kas &rarr;</a>
     </div>
+    <?php endif; ?>
 
     <!-- 9. Fauzi Al Wahid: Laporan Penjualan & Laba -->
+    <?php if (auth_can('laporan_penjualan.php')): ?>
     <div class="card-box" style="margin-bottom: 0; display: flex; flex-direction: column;">
         <div class="card-box-header">
             <div>
@@ -241,8 +308,10 @@ require_once __DIR__ . '/layout/header.php';
         </div>
         <a href="laporan_penjualan.php" class="btn btn-primary" style="width: 100%;">Buka Laporan Penjualan &rarr;</a>
     </div>
+    <?php endif; ?>
 
     <!-- 10. Fauzi Al Wahid: Laporan Mutasi Stok -->
+    <?php if (auth_can('laporan_mutasi.php')): ?>
     <div class="card-box" style="margin-bottom: 0; display: flex; flex-direction: column;">
         <div class="card-box-header">
             <div>
@@ -259,6 +328,27 @@ require_once __DIR__ . '/layout/header.php';
         </div>
         <a href="laporan_mutasi.php" class="btn btn-primary" style="width: 100%;">Buka Laporan Mutasi &rarr;</a>
     </div>
+    <?php endif; ?>
+
+    <!-- 11. Fauzi Al Wahid: Peringatan Stok & Kadaluwarsa -->
+    <?php if (auth_can('peringatan_stok.php')): ?>
+    <div class="card-box" style="margin-bottom: 0; display: flex; flex-direction: column;">
+        <div class="card-box-header">
+            <div>
+                <span class="sku-badge">FW-03 • UC-05..06</span>
+                <h3 class="card-box-title" style="margin-top: 4px;">Peringatan Stok &amp; Kadaluwarsa</h3>
+            </div>
+            <span class="pill pill-teal">Fauzi Al Wahid</span>
+        </div>
+        <p style="font-size: 0.84rem; color: var(--gray-500); margin-bottom: 14px; flex: 1;">
+            Daftar produk di bawah ambang stok minimum dan barang mendekati/melewati tanggal kedaluwarsa beserta rekomendasi tindakan gudang (<code>UI-09</code> &amp; <code>UI-10</code>).
+        </p>
+        <div style="background: var(--gray-100); padding: 8px 12px; border-radius: 6px; font-size: 0.76rem; color: var(--slate); margin-bottom: 14px;">
+            Artefak: <code>CD-13 PeringatanStokController</code> | <code>UI-09 / UI-10</code> | <code>stok</code>
+        </div>
+        <a href="peringatan_stok.php" class="btn btn-primary" style="width: 100%;">Buka Peringatan Stok &rarr;</a>
+    </div>
+    <?php endif; ?>
 </div>
 
 <!-- SYSTEM STATUS TERMINAL BOX -->
