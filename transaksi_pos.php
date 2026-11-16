@@ -8,6 +8,7 @@
 
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/controllers/TransaksiController.php';
+require_once __DIR__ . '/controllers/QrisController.php';
 auth_require_page(basename(__FILE__));
 
 $db  = Database::getInstance();
@@ -214,6 +215,25 @@ foreach ($_SESSION['pos_cart'] as $c) {
     $cartItemsCount += $c['qty'];
 }
 $cartGrandTotal = max(0, $cartSubtotal - $cartDiskon);
+
+// QRIS merchant sendiri: nominal dinamis mengikuti total tagihan
+$qrisSiap     = QrisController::isConfigured();
+$qrisPayload  = ($qrisSiap && $cartGrandTotal > 0)
+    ? QrisController::dynamic((string) QrisController::load()['payload'], (int) $cartGrandTotal)
+    : null;
+$qrisCheck    = $qrisSiap
+    ? QrisController::validate((string) QrisController::load()['payload'])
+    : ['merchant' => '', 'city' => '', 'nmid' => ''];
+$qrisMerchant = ($qrisCheck['merchant'] ?? '') !== ''
+    ? (string) $qrisCheck['merchant']
+    : QrisController::merchantName();
+$qrisCity     = ($qrisCheck['city'] ?? '') !== ''
+    ? (string) $qrisCheck['city']
+    : QrisController::merchantCity();
+$qrisNmid     = ($qrisCheck['nmid'] ?? '') !== ''
+    ? (string) $qrisCheck['nmid']
+    : QrisController::nmid();
+$qrisImage    = QrisController::imagePath();
 
 $produkList = $db->query("SELECT * FROM produk ORDER BY nama_produk ASC")->fetchAll();
 
@@ -455,20 +475,50 @@ require_once __DIR__ . '/layout/header.php';
             <!-- TAB 2: QRIS DINAMIS (UI-12) -->
             <div id="panelQris" style="display: none;">
                 <div style="text-align: center; margin-bottom: 14px;">
+                    <?php if ($qrisPayload !== null): ?>
                     <div style="display: inline-flex; align-items: center; gap: 6px; background: #fefce8; border: 1px solid #fde047; padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; color: #a16207; margin-bottom: 12px;">
-                        ⏱ Sisa waktu bayar: <strong id="qrisTimer">04:57 menit</strong>
+                        ⏱ Sisa waktu bayar: <strong id="qrisTimer">05:00</strong>
+                    </div>
+
+                    <div id="qrisDinamis" data-payload="<?= htmlspecialchars((string) $qrisPayload, ENT_QUOTES, 'UTF-8'); ?>" style="display: flex; justify-content: center; margin-bottom: 8px;">
+                        <div id="qrisDinamisQr" style="width: 230px; height: 230px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.06);"></div>
+                    </div>
+
+                    <div style="font-size: 1.6rem; font-weight: 800; color: var(--primary); letter-spacing: -0.5px;">
+                        Rp <?= number_format($cartGrandTotal, 0, ',', '.'); ?>
+                    </div>
+                    <div style="font-size: 0.78rem; color: var(--gray-500); margin-bottom: 12px; line-height: 1.5;">
+                        <?= htmlspecialchars($qrisMerchant, ENT_QUOTES, 'UTF-8'); ?> &bull; <?= htmlspecialchars($qrisCity, ENT_QUOTES, 'UTF-8'); ?><br>
+                        NMID <?= htmlspecialchars($qrisNmid, ENT_QUOTES, 'UTF-8'); ?> &bull; <strong>QRIS Dinamis</strong> (nominal otomatis)
+                    </div>
+
+                    <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 16px; max-width: 340px; margin: 0 auto 14px auto;">
+                        <span style="font-size: 0.74rem; color: #1e40af;">STATUS PEMBAYARAN</span>
+                        <div style="font-weight: 700; color: #1e3a8a; font-size: 0.9rem; margin-top: 2px;">
+                            ⏳ Menunggu dana masuk &mdash; verifikasi oleh kasir
+                        </div>
+                    </div>
+                    <?php else: ?>
+                    <div style="display: inline-flex; align-items: center; gap: 6px; background: #fefce8; border: 1px solid #fde047; padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; color: #a16207; margin-bottom: 12px;">
+                        ⏱ Sisa waktu bayar: <strong id="qrisTimer">05:00</strong>
                     </div>
 
                     <div style="display: flex; justify-content: center; margin-bottom: 14px;">
-                        <img src="assets/qris_code.png" alt="QRIS Code" style="width: 220px; height: auto; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.06);">
+                        <img src="<?= htmlspecialchars($qrisImage, ENT_QUOTES, 'UTF-8'); ?>" alt="QRIS Merchant" style="width: 220px; height: auto; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.06);">
                     </div>
 
-                    <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 16px; max-width: 320px; margin: 0 auto 14px auto;">
-                        <span style="font-size: 0.74rem; color: #1e40af;">STATUS TRANSAKSI &bull; Auto-check 2s</span>
-                        <div style="font-weight: 700; color: #1e3a8a; font-size: 0.9rem; margin-top: 2px;">
-                            ⏳ Status: Menunggu pembayaran...
+                    <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 16px; max-width: 360px; margin: 0 auto 14px auto; text-align: left;">
+                        <span style="font-size: 0.74rem; color: #b45309; font-weight: 700;">QRIS STATIS &bull; NOMINAL BELUM TERTANAM</span>
+                        <div style="font-size: 0.8rem; color: #92400e; margin-top: 3px; line-height: 1.5;">
+                            Pelanggan harus mengisi nominal <strong>Rp <?= number_format($cartGrandTotal, 0, ',', '.'); ?></strong> sendiri.
+                            <?php if (auth_is_owner()): ?>
+                                Aktifkan QRIS dinamis di <a href="pengaturan_qris.php" style="color: #b45309; font-weight: 700;">Pengaturan QRIS</a>.
+                            <?php else: ?>
+                                Hubungi Pemilik Toko untuk mengaktifkan QRIS dinamis.
+                            <?php endif; ?>
                         </div>
                     </div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="action-bar" style="margin-top: 10px; padding-top: 14px;">
@@ -568,6 +618,9 @@ function switchPaymentTab(tab) {
         // QRIS dibayar lunas otomatis, nominal tidak perlu diisi kasir
         inpNominal.value = grandTotal;
         inpNominal.disabled = true;
+        if (typeof startQrisTimer === 'function') {
+            startQrisTimer();
+        }
     }
 }
 
@@ -589,6 +642,60 @@ function filterPosCat(cat) {
         sel.focus();
     }
 }
+</script>
+
+<script src="assets/vendor/qrcode-generator.js"></script>
+<script>
+    // QRIS dinamis: QR digambar dari payload yang sudah dihitung server (tag 01=12, tag 54, CRC16).
+    (function () {
+        const box = document.getElementById('qrisDinamis');
+        const holder = document.getElementById('qrisDinamisQr');
+        if (!box || !holder || typeof qrcode === 'undefined') { return; }
+
+        const payload = box.getAttribute('data-payload') || '';
+        if (!payload) { return; }
+
+        try {
+            const qr = qrcode(0, 'M');
+            qr.addData(payload);
+            qr.make();
+            holder.innerHTML = qr.createSvgTag({ scalable: true, cellSize: 4 });
+
+            const svg = holder.querySelector('svg');
+            if (svg) {
+                svg.setAttribute('width', '100%');
+                svg.setAttribute('height', '100%');
+                svg.style.display = 'block';
+            }
+        } catch (err) {
+            holder.innerHTML = '<div style="font-size:.76rem;color:#b91c1c;padding:8px;text-align:left;">QR gagal dibuat: '
+                + err.message + '</div>';
+        }
+    })();
+
+    // Hitung mundur 5 menit sejak tab QRIS dibuka
+    let qrisInterval = null;
+    let qrisSisa = 300;
+
+    function startQrisTimer() {
+        const el = document.getElementById('qrisTimer');
+        if (!el || qrisInterval !== null) { return; }
+
+        const render = function () {
+            const m = Math.floor(qrisSisa / 60);
+            const s = qrisSisa % 60;
+            el.textContent = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+            if (qrisSisa <= 0) {
+                clearInterval(qrisInterval);
+                qrisInterval = null;
+                el.textContent = 'kedaluwarsa';
+            }
+            qrisSisa--;
+        };
+
+        render();
+        qrisInterval = setInterval(render, 1000);
+    }
 </script>
 
 <?php require_once __DIR__ . '/layout/footer.php'; ?>

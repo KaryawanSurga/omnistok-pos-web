@@ -216,6 +216,7 @@ function auth_access_matrix(): array {
         'laporan_mutasi.php'    => ['owner', 'gudang'],
         'peringatan_stok.php'   => ['owner', 'gudang'],
         'kelola_akun.php'       => ['owner'],
+        'pengaturan_qris.php'   => ['owner'],
     ];
 }
 
@@ -234,6 +235,7 @@ function auth_page_labels(): array {
         'laporan_mutasi.php'    => 'Laporan Mutasi Stok',
         'peringatan_stok.php'   => 'Peringatan Stok &amp; Kadaluwarsa',
         'kelola_akun.php'       => 'Kelola Akun &amp; Hak Akses',
+        'pengaturan_qris.php'   => 'Pengaturan Pembayaran QRIS',
     ];
 }
 

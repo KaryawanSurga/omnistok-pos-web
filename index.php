@@ -19,7 +19,7 @@ $countRekonsiliasi = $db->query("SELECT COUNT(*) FROM rekonsiliasi")->fetchColum
 $countMutasi = $db->query("SELECT COUNT(*) FROM mutasi_stok")->fetchColumn();
 
 $roleKey = auth_role_key();
-$modulePages = array_diff(array_keys(auth_access_matrix()), ['index.php']);
+$modulePages = array_diff(array_keys(auth_access_matrix()), ['index.php', 'pengaturan_qris.php']);
 $moduleCount = count(array_filter($modulePages, static fn (string $p): bool => auth_can($p)));
 
 $activePage = 'dashboard';

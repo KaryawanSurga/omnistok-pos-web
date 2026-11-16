@@ -191,7 +191,7 @@ if (function_exists('auth_can')) {
 
             <!-- SECTION 6: USER & SETTINGS (khusus Pemilik Toko) -->
             <?php if ($canManageAccounts): ?>
-            <div class="menu-section-group <?= ($activePage === 'kelola_akun') ? 'active-section' : ''; ?>" id="sec-user">
+            <div class="menu-section-group <?= ($activePage === 'kelola_akun' || $activePage === 'pengaturan_qris') ? 'active-section' : ''; ?>" id="sec-user">
                 <button class="menu-section-header" onclick="toggleSection('sec-user')">
                     <span>USER & SETTINGS</span>
                     <span class="chevron-icon">▾</span>
@@ -200,6 +200,10 @@ if (function_exists('auth_can')) {
                     <a href="kelola_akun.php" class="menu-item <?= ($activePage === 'kelola_akun') ? 'active' : ''; ?>">
                         <span class="menu-ico">👥</span>
                         <span class="menu-text">Kelola Akun & Akses</span>
+                    </a>
+                    <a href="pengaturan_qris.php" class="menu-item <?= ($activePage === 'pengaturan_qris') ? 'active' : ''; ?>">
+                        <span class="menu-ico">📱</span>
+                        <span class="menu-text">Pembayaran QRIS</span>
                     </a>
                 </div>
             </div>

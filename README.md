@@ -122,6 +122,7 @@ Matriks navigasi per peran:
 | Laporan Penjualan & Laba | Ya | Ya | - |
 | Laporan Mutasi Stok | Ya | - | Ya |
 | Peringatan Stok & Kadaluwarsa | Ya | - | Ya |
+| Pembayaran QRIS (pengaturan merchant) | Ya | - | - |
 | Kelola Akun & Akses | Ya | - | - |
 
 Ketentuan akses:
@@ -137,6 +138,45 @@ Ketentuan akses:
   dengan `SameSite=Lax`.
 - Tombol **Keluar dari Sistem** pada menu profil kanan atas mengakhiri sesi dan
   menghapus cookie sesi.
+
+### 💳 Pembayaran QRIS Merchant Sendiri
+
+Menu **USER & SETTINGS → Pembayaran QRIS** (`pengaturan_qris.php`, khusus Pemilik
+Toko) mengaktifkan QRIS milik toko sendiri, lengkap dengan nominal dinamis.
+
+Merchant terdaftar:
+
+| Data | Nilai |
+| --- | --- |
+| NMID | `ID1025421996014` |
+| Nama Merchant | `FERDYANSAH` |
+| Cabang / Kota | `KP.CABANG LIO` |
+| Kategori (MCC) | `FASHION` |
+
+Cara mengaktifkan (sekali saja):
+
+1. Buka **Pembayaran QRIS** sebagai Pemilik Toko.
+2. Pilih gambar QRIS resmi milik toko (poster atau tangkapan layar aplikasi merchant).
+   Gambar dipindai langsung di browser memakai `jsQR`, jadi tidak dikirim ke server lain.
+3. Payload hasil pindai tampil di kolom payload, lalu klik **Simpan Payload QRIS**.
+   Sistem memeriksa CRC16, tag `00/01/53`, dan NMID sebelum menyimpan.
+4. Kolom **Pratinjau QRIS Dinamis** bisa dipakai untuk menguji nominal berapa pun.
+
+Cara kerja QRIS dinamis:
+
+- Payload statis merchant disimpan di `database/qris_merchant.json`.
+- Setiap transaksi QRIS, `controllers/QrisController.php` mengubah tag `01` dari
+  `11` (statis) menjadi `12` (dinamis), menyisipkan tag `54` berisi total tagihan,
+  lalu menghitung ulang **CRC16-CCITT (FALSE)** pada tag `63`.
+- QR digambar di perangkat kasir memakai `assets/vendor/qrcode-generator.js`
+  (offline, tanpa CDN). Total di QR selalu sama dengan total tagihan kasir.
+- Bila payload belum diatur, kasir menampilkan gambar QRIS statis
+  (`assets/qris_merchant_qr.*` hasil unggahan, atau `assets/qris_code.png`) dan
+  memberi peringatan bahwa nominal belum tertanam.
+
+Catatan: nominal QR tidak dapat diverifikasi otomatis oleh aplikasi ini (butuh
+integrasi API acquirer). Kasir tetap menekan **Konfirmasi Lunas** setelah dana
+masuk, dan transaksi tercatat dengan `metode_bayar = 'QRIS'`.
 
 ### Jika memakai MySQL/MariaDB
 
