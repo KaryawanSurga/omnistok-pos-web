@@ -72,7 +72,8 @@ class Database {
                 kategori TEXT NOT NULL,
                 deskripsi TEXT NULL,
                 harga_jual REAL NOT NULL,
-                harga_modal REAL NOT NULL
+                harga_modal REAL NOT NULL,
+                status_aktif INTEGER NOT NULL DEFAULT 1
             );
 
             CREATE TABLE IF NOT EXISTS pemasok (
@@ -215,6 +216,7 @@ class Database {
         $this->migrateSqliteAkun();
         $this->migrateSqliteTransaksi();
         $this->migrateSqliteRekonsiliasi();
+        $this->migrateSqliteProduk();
 
         // Seed jika tabel riwayat_harga masih kosong
         $stmtRH = $this->pdo->query("SELECT COUNT(*) as cnt FROM riwayat_harga");
@@ -285,6 +287,24 @@ class Database {
             WHERE kode_diskon IS NULL OR kode_diskon = ''
         ");
         $this->pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_diskon_kode ON diskon (kode_diskon)");
+    }
+
+    /**
+     * Menambahkan status aktif pada master produk SQLite lama.
+     * Produk yang masih dipakai riwayat transaksi tidak dihapus permanen,
+     * melainkan diarsipkan dengan status_aktif = 0.
+     */
+    private function migrateSqliteProduk() {
+        $existing = [];
+        foreach ($this->pdo->query('PRAGMA table_info(produk)')->fetchAll() as $column) {
+            $existing[strtolower((string) $column['name'])] = true;
+        }
+
+        if (!isset($existing['status_aktif'])) {
+            $this->pdo->exec('ALTER TABLE produk ADD COLUMN status_aktif INTEGER NOT NULL DEFAULT 1');
+        }
+
+        $this->pdo->exec('UPDATE produk SET status_aktif = 1 WHERE status_aktif IS NULL');
     }
 
     /**

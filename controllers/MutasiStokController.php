@@ -88,6 +88,7 @@ class MutasiStokController {
                    END AS status_stok
             FROM produk p
             LEFT JOIN stok s ON p.id_produk = s.id_produk
+            WHERE p.status_aktif = 1
             GROUP BY p.id_produk
             ORDER BY status_stok DESC, p.nama_produk ASC
         ");

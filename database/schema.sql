@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS produk (
     kategori VARCHAR(50) NOT NULL,
     deskripsi TEXT NULL,
     harga_jual DECIMAL(10,2) NOT NULL,
-    harga_modal DECIMAL(10,2) NOT NULL
+    harga_modal DECIMAL(10,2) NOT NULL,
+    status_aktif TINYINT(1) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 3. TABEL PEMASOK (PDM Halaman 145-146)

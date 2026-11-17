@@ -178,7 +178,7 @@ function promoStatus(array $diskon): array
  *     status_aktif: int
  * }
  */
-function bacaInputDiskon(PDO $db, array $input): array
+function bacaInputDiskon(PDO $db, array $input, bool $hanyaProdukAktif = true): array
 {
     $errors = [];
 
@@ -240,10 +240,14 @@ function bacaInputDiskon(PDO $db, array $input): array
     }
 
     if ($idProduk !== false && $idProduk > 0) {
-        $stmt = $db->prepare('SELECT id_produk FROM produk WHERE id_produk = ?');
+        $sqlProduk = 'SELECT id_produk FROM produk WHERE id_produk = ?'
+            . ($hanyaProdukAktif ? ' AND status_aktif = 1' : '');
+        $stmt = $db->prepare($sqlProduk);
         $stmt->execute([$idProduk]);
         if ($stmt->fetchColumn() === false) {
-            $errors[] = 'Produk yang dipilih tidak ditemukan.';
+            $errors[] = $hanyaProdukAktif
+                ? 'Produk yang dipilih tidak ditemukan atau sudah dinonaktifkan.'
+                : 'Produk yang dipilih tidak ditemukan.';
         }
     }
 
@@ -369,7 +373,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new InvalidArgumentException('Promo yang akan diubah tidak ditemukan.');
             }
 
-            $data = bacaInputDiskon($db, $_POST);
+            $data = bacaInputDiskon($db, $_POST, false);
 
             $stmt = $db->prepare(
                 'UPDATE diskon SET
@@ -473,7 +477,9 @@ foreach ($produkList as $produk) {
     $produk['kategori_tampil'] = $kategoriProduk !== '' ? $kategoriProduk : 'Umum';
 
     $produkById[$idProduk] = $produk;
-    $produkPerKategori[$produk['kategori_tampil']][] = $produk;
+    if ((int) ($produk['status_aktif'] ?? 1) === 1) {
+        $produkPerKategori[$produk['kategori_tampil']][] = $produk;
+    }
     $hargaProduk[$idProduk] = (float) $produk['harga_jual'];
 }
 ksort($produkPerKategori);

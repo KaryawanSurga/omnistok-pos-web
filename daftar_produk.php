@@ -423,18 +423,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new InvalidArgumentException('ID produk yang akan dihapus tidak valid.');
             }
 
-            $stmt = $db->prepare('SELECT nama_produk FROM produk WHERE id_produk = ?');
+            $stmt = $db->prepare('SELECT nama_produk, status_aktif FROM produk WHERE id_produk = ?');
             $stmt->execute([$idProduk]);
-            $namaProduk = $stmt->fetchColumn();
-            if ($namaProduk === false) {
+            $produkHapus = $stmt->fetch();
+            if ($produkHapus === false) {
                 throw new InvalidArgumentException('Produk yang akan dihapus tidak ditemukan.');
             }
+            $namaProduk = (string) $produkHapus['nama_produk'];
 
             $referensi = referensiProduk($db, $idProduk);
             if ($referensi !== []) {
-                throw new InvalidArgumentException(
-                    'Produk tidak bisa dihapus karena masih dipakai pada: ' . implode(', ', $referensi) .
-                    '. Hapus atau selesaikan data terkait terlebih dahulu.'
+                if ((int) $produkHapus['status_aktif'] === 0) {
+                    throw new InvalidArgumentException(
+                        "Produk '{$namaProduk}' sudah berstatus nonaktif (diarsipkan)."
+                    );
+                }
+
+                // Produk masih dipakai riwayat transaksi: jangan hapus permanen
+                // agar laporan lama tetap utuh. Cukup arsipkan dari katalog aktif.
+                $db->beginTransaction();
+                try {
+                    $db->prepare('UPDATE produk SET status_aktif = 0 WHERE id_produk = ?')
+                        ->execute([$idProduk]);
+                    $db->prepare(
+                        'UPDATE diskon SET status_aktif = 0, updated_at = ?
+                         WHERE id_produk = ? AND status_aktif = 1'
+                    )->execute([date('Y-m-d H:i:s'), $idProduk]);
+                    $db->commit();
+                } catch (Throwable $e) {
+                    if ($db->inTransaction()) {
+                        $db->rollBack();
+                    }
+                    throw $e;
+                }
+
+                redirectWithFlash(
+                    'warning',
+                    "Produk '{$namaProduk}' (" . kodeProduk($idProduk) . ') tidak dihapus permanen karena masih dipakai pada: ' .
+                    implode(', ', $referensi) . '. Produk dinonaktifkan (diarsipkan) dan tidak lagi tampil di POS/katalog aktif.'
                 );
             }
 
@@ -454,6 +480,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             redirectWithFlash('success', "Produk '{$namaProduk}' (" . kodeProduk($idProduk) . ') berhasil dihapus.');
+        }
+
+        if ($action === 'aktifkan_produk') {
+            $idProduk = filter_var($_POST['id_produk'] ?? null, FILTER_VALIDATE_INT);
+            if ($idProduk === false || $idProduk <= 0) {
+                throw new InvalidArgumentException('ID produk yang akan diaktifkan tidak valid.');
+            }
+
+            $stmt = $db->prepare('SELECT nama_produk FROM produk WHERE id_produk = ?');
+            $stmt->execute([$idProduk]);
+            $namaProduk = $stmt->fetchColumn();
+            if ($namaProduk === false) {
+                throw new InvalidArgumentException('Produk yang akan diaktifkan tidak ditemukan.');
+            }
+
+            $db->prepare('UPDATE produk SET status_aktif = 1 WHERE id_produk = ?')->execute([$idProduk]);
+
+            redirectWithFlash(
+                'success',
+                "Produk '{$namaProduk}' (" . kodeProduk($idProduk) . ') berhasil diaktifkan kembali dan tampil lagi di POS/katalog.'
+            );
         }
 
         if ($action === 'update_harga') {
@@ -556,6 +603,7 @@ $nilaiPersediaan = 0.0;
 $totalMargin = 0.0;
 $produkMargin = 0;
 $marginRendah = 0;
+$totalArsip = 0;
 $produkData = [];
 
 foreach ($produkList as &$produk) {
@@ -567,16 +615,21 @@ foreach ($produkList as &$produk) {
     $produk['batas_minimum'] = (int) $produk['batas_minimum'];
     $produk['margin'] = hitungMargin((float) $produk['harga_jual'], (float) $produk['harga_modal']);
     $produk['stok_menipis'] = $produk['jumlah_stok'] <= $produk['batas_minimum'];
+    $produk['aktif'] = ((int) ($produk['status_aktif'] ?? 1) === 1);
 
-    $kategoriList[$produk['kategori']] = ($kategoriList[$produk['kategori']] ?? 0) + 1;
-    if ($produk['stok_menipis']) {
-        $stokMenipis++;
-    }
-    $nilaiPersediaan += $produk['jumlah_stok'] * (float) $produk['harga_modal'];
-    $totalMargin += $produk['margin'];
-    $produkMargin++;
-    if ($produk['margin'] < 8) {
-        $marginRendah++;
+    if (!$produk['aktif']) {
+        $totalArsip++;
+    } else {
+        $kategoriList[$produk['kategori']] = ($kategoriList[$produk['kategori']] ?? 0) + 1;
+        if ($produk['stok_menipis']) {
+            $stokMenipis++;
+        }
+        $nilaiPersediaan += $produk['jumlah_stok'] * (float) $produk['harga_modal'];
+        $totalMargin += $produk['margin'];
+        $produkMargin++;
+        if ($produk['margin'] < 8) {
+            $marginRendah++;
+        }
     }
 
     $produkData[(int) $produk['id_produk']] = [
@@ -594,7 +647,7 @@ foreach ($produkList as &$produk) {
 unset($produk);
 ksort($kategoriList);
 
-$totalProduk = count($produkList);
+$totalProduk = count($produkList) - $totalArsip;
 $rataMargin = $produkMargin > 0 ? $totalMargin / $produkMargin : 0.0;
 
 $activeTab = (string) ($_GET['tab'] ?? 'katalog');
@@ -686,7 +739,7 @@ require_once __DIR__ . '/layout/header.php';
             <div class="stat-info">
                 <div class="stat-label">Total Produk</div>
                 <div class="stat-value"><?= $totalProduk; ?> SKU</div>
-                <div class="stat-sub">Master produk terdaftar</div>
+                <div class="stat-sub">Master produk aktif<?= $totalArsip > 0 ? ' • ' . $totalArsip . ' nonaktif' : ''; ?></div>
             </div>
             <div class="stat-icon teal" aria-hidden="true">▤</div>
         </div>
@@ -727,6 +780,11 @@ require_once __DIR__ . '/layout/header.php';
             <button type="button" class="filter-chip" data-kategori="" data-low="1" onclick="setKategoriFilter('', true)" aria-pressed="false">
                 Stok Menipis (<?= $stokMenipis; ?>)
             </button>
+            <?php if ($totalArsip > 0): ?>
+                <button type="button" class="filter-chip" data-arsip="1" onclick="setArsipFilter(true)" aria-pressed="false">
+                    Nonaktif (<?= $totalArsip; ?>)
+                </button>
+            <?php endif; ?>
             <?php foreach ($kategoriList as $kategori => $jumlah): ?>
                 <button type="button" class="filter-chip" data-kategori="<?= e($kategori); ?>" data-low="0" onclick="setKategoriFilter(<?= e(json_encode($kategori, $jsonFlags)); ?>, false)" aria-pressed="false">
                     <?= e($kategori); ?> (<?= $jumlah; ?>)
@@ -762,13 +820,18 @@ require_once __DIR__ . '/layout/header.php';
                         $batasVal = (int) $prod['batas_minimum'];
                         $stokClass = $stokVal <= 0 ? 'is-danger' : ($stokVal <= $batasVal ? 'is-warning' : '');
                         ?>
-                        <tr data-kategori="<?= e($prod['kategori']); ?>" data-stok="<?= $prod['stok_menipis'] ? 'low' : 'normal'; ?>">
+                        <tr data-kategori="<?= e($prod['kategori']); ?>" data-stok="<?= $prod['stok_menipis'] ? 'low' : 'normal'; ?>" data-aktif="<?= $prod['aktif'] ? '1' : '0'; ?>" class="<?= $prod['aktif'] ? '' : 'row-muted'; ?>">
                             <td>
                                 <div class="sku-badge"><?= e($prod['kode_tampil']); ?></div>
                                 <div class="cell-sub" style="font-family: monospace;">|||| 8991234<?= (int) $prod['id_produk']; ?></div>
                             </td>
                             <td>
-                                <div class="cell-title" style="margin-top: 0;"><?= e($prod['nama_produk']); ?></div>
+                                <div class="cell-title" style="margin-top: 0;">
+                                    <?= e($prod['nama_produk']); ?>
+                                    <?php if (!$prod['aktif']): ?>
+                                        <span class="pill pill-gray" style="margin-left: 6px;">Nonaktif</span>
+                                    <?php endif; ?>
+                                </div>
                                 <div class="cell-desc" title="<?= e($prod['deskripsi']); ?>"><?= e($prod['deskripsi'] !== '' ? $prod['deskripsi'] : 'Tanpa deskripsi'); ?></div>
                             </td>
                             <td><span class="pill pill-teal"><?= e($prod['kategori']); ?></span></td>
@@ -790,20 +853,34 @@ require_once __DIR__ . '/layout/header.php';
                                             <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
                                         </svg>
                                     </button>
-                                    <form method="POST" action="daftar_produk.php?tab=katalog" class="inline-form" onsubmit="return confirm('Hapus produk ini? Data stok dan riwayat harga produk juga akan dihapus.');">
-                                        <?= csrfField(); ?>
-                                        <input type="hidden" name="action" value="hapus_produk">
-                                        <input type="hidden" name="id_produk" value="<?= (int) $prod['id_produk']; ?>">
-                                        <button type="submit" class="icon-btn danger" title="Hapus produk" aria-label="Hapus produk <?= e($prod['nama_produk']); ?>">
-                                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                                <path d="M3 6h18"></path>
-                                                <path d="M8 6V4h8v2"></path>
-                                                <path d="m19 6-1 14H6L5 6"></path>
-                                                <path d="M10 11v6"></path>
-                                                <path d="M14 11v6"></path>
-                                            </svg>
-                                        </button>
-                                    </form>
+                                    <?php if ($prod['aktif']): ?>
+                                        <form method="POST" action="daftar_produk.php?tab=katalog" class="inline-form" onsubmit="return confirm('Hapus produk ini? Jika produk memiliki riwayat transaksi, produk akan dinonaktifkan (diarsipkan) agar laporan lama tetap utuh.');">
+                                            <?= csrfField(); ?>
+                                            <input type="hidden" name="action" value="hapus_produk">
+                                            <input type="hidden" name="id_produk" value="<?= (int) $prod['id_produk']; ?>">
+                                            <button type="submit" class="icon-btn danger" title="Hapus produk" aria-label="Hapus produk <?= e($prod['nama_produk']); ?>">
+                                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                    <path d="M3 6h18"></path>
+                                                    <path d="M8 6V4h8v2"></path>
+                                                    <path d="m19 6-1 14H6L5 6"></path>
+                                                    <path d="M10 11v6"></path>
+                                                    <path d="M14 11v6"></path>
+                                                </svg>
+                                            </button>
+                                        </form>
+                                    <?php else: ?>
+                                        <form method="POST" action="daftar_produk.php?tab=katalog" class="inline-form" onsubmit="return confirm('Aktifkan kembali produk ini agar tampil di katalog dan POS?');">
+                                            <?= csrfField(); ?>
+                                            <input type="hidden" name="action" value="aktifkan_produk">
+                                            <input type="hidden" name="id_produk" value="<?= (int) $prod['id_produk']; ?>">
+                                            <button type="submit" class="icon-btn" title="Aktifkan kembali produk" aria-label="Aktifkan kembali produk <?= e($prod['nama_produk']); ?>" style="color: var(--success, #16a34a);">
+                                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                    <path d="M3 12a9 9 0 1 0 3-6.7"></path>
+                                                    <path d="M3 3v6h6"></path>
+                                                </svg>
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
                                 </div>
                             </td>
                         </tr>
@@ -822,8 +899,8 @@ require_once __DIR__ . '/layout/header.php';
         </div>
 
         <div class="table-footer">
-            <div id="tableInfo">Menampilkan <?= count($produkList); ?> dari <?= count($produkList); ?> produk</div>
-            <div class="muted-note">Harga jual tidak boleh lebih rendah dari harga modal</div>
+            <div id="tableInfo">Menampilkan <?= $totalProduk; ?> dari <?= $totalProduk; ?> produk aktif</div>
+            <div class="muted-note">Produk nonaktif/arsip tidak tampil di katalog aktif maupun POS</div>
         </div>
     </div>
 
@@ -934,6 +1011,7 @@ require_once __DIR__ . '/layout/header.php';
         const rows = Array.from(document.querySelectorAll('#katalogTable tbody tr[data-kategori]'));
         let activeKategori = '';
         let activeLow = false;
+        let activeArsip = false;
 
         function rupiah(value) {
             return 'Rp ' + Math.round(Number(value) || 0).toLocaleString('id-ID');
@@ -1016,8 +1094,9 @@ require_once __DIR__ . '/layout/header.php';
             rows.forEach(function (row) {
                 const matchesKategori = kategori === '' || row.dataset.kategori.toLowerCase() === kategori;
                 const matchesLow = !activeLow || row.dataset.stok === 'low';
+                const matchesStatus = activeArsip ? row.dataset.aktif === '0' : row.dataset.aktif === '1';
                 const matchesSearch = query === '' || row.textContent.toLowerCase().includes(query);
-                const show = matchesKategori && matchesLow && matchesSearch;
+                const show = matchesKategori && matchesLow && matchesStatus && matchesSearch;
 
                 row.style.display = show ? '' : 'none';
                 if (show) {
@@ -1025,20 +1104,38 @@ require_once __DIR__ . '/layout/header.php';
                 }
             });
 
-            tableInfo.textContent = 'Menampilkan ' + visible + ' dari ' + rows.length + ' produk';
+            const totalBaris = rows.filter(function (row) {
+                return activeArsip ? row.dataset.aktif === '0' : row.dataset.aktif === '1';
+            }).length;
+
+            tableInfo.textContent = 'Menampilkan ' + visible + ' dari ' + totalBaris + ' produk' + (activeArsip ? ' nonaktif' : '');
             emptyRow.style.display = visible === 0 ? '' : 'none';
 
             document.querySelectorAll('[data-kategori][data-low]').forEach(function (button) {
                 const isActive = button.dataset.kategori === activeKategori
-                    && (button.dataset.low === '1') === activeLow;
+                    && (button.dataset.low === '1') === activeLow
+                    && !activeArsip;
                 button.classList.toggle('is-active', isActive);
                 button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            });
+
+            document.querySelectorAll('[data-arsip]').forEach(function (button) {
+                button.classList.toggle('is-active', activeArsip);
+                button.setAttribute('aria-pressed', activeArsip ? 'true' : 'false');
             });
         }
 
         function setKategoriFilter(kategori, low) {
             activeKategori = kategori || '';
             activeLow = Boolean(low);
+            activeArsip = false;
+            applyFilters();
+        }
+
+        function setArsipFilter(arsip) {
+            activeKategori = '';
+            activeLow = false;
+            activeArsip = Boolean(arsip);
             applyFilters();
         }
 
@@ -1071,6 +1168,7 @@ require_once __DIR__ . '/layout/header.php';
         window.openProductModal = openProductModal;
         window.closeProductModal = closeProductModal;
         window.setKategoriFilter = setKategoriFilter;
+        window.setArsipFilter = setArsipFilter;
 
         applyFilters();
     })();

@@ -10,7 +10,7 @@ auth_require_page(basename(__FILE__));
 $db = Database::getInstance();
 
 $countAkun = $db->query("SELECT COUNT(*) FROM akun")->fetchColumn();
-$countProduk = $db->query("SELECT COUNT(*) FROM produk")->fetchColumn();
+$countProduk = $db->query("SELECT COUNT(*) FROM produk WHERE status_aktif = 1")->fetchColumn();
 $countStok = $db->query("SELECT COALESCE(SUM(jumlah_stok), 0) FROM stok")->fetchColumn();
 $countPenerimaan = $db->query("SELECT COUNT(*) FROM penerimaan")->fetchColumn();
 $countPenjualan = $db->query("SELECT COUNT(*) FROM transaksi")->fetchColumn();

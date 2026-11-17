@@ -35,6 +35,7 @@ class TransaksiController {
             SELECT p.*, COALESCE(SUM(s.jumlah_stok), 0) AS total_stok
             FROM produk p
             LEFT JOIN stok s ON p.id_produk = s.id_produk
+            WHERE p.status_aktif = 1
             GROUP BY p.id_produk
             ORDER BY p.nama_produk ASC
         ");
@@ -47,11 +48,80 @@ class TransaksiController {
             SELECT p.*, COALESCE(SUM(s.jumlah_stok), 0) AS total_stok
             FROM produk p
             LEFT JOIN stok s ON p.id_produk = s.id_produk
-            WHERE p.id_produk = ?
+            WHERE p.id_produk = ? AND p.status_aktif = 1
             GROUP BY p.id_produk
         ");
         $stmt->execute([$id_produk]);
         return $stmt->fetch();
+    }
+
+    /**
+     * Mencari promo aktif terbaik untuk sebuah produk pada tanggal hari ini.
+     * Syarat: status aktif, berada dalam rentang tanggal, dan kuota belum habis.
+     * Bila ada beberapa promo, dipilih potongan per unit terbesar; bila nilainya
+     * sama, promo yang paling cepat berakhir diprioritaskan.
+     *
+     * @return array<string, mixed>|null Baris diskon + kunci 'potongan' (Rp/unit)
+     */
+    public function get_diskon_aktif($id_produk, $harga) {
+        $id_produk = (int) $id_produk;
+        $harga = round((float) $harga, 2);
+        if ($id_produk <= 0 || $harga <= 0) {
+            return null;
+        }
+
+        $hariIni = (new DateTimeImmutable('now', new DateTimeZone('Asia/Jakarta')))->format('Y-m-d');
+
+        $stmt = $this->db->prepare("
+            SELECT *
+            FROM diskon
+            WHERE id_produk = ?
+              AND status_aktif = 1
+              AND tanggal_mulai <= ?
+              AND tanggal_selesai >= ?
+              AND (kuota IS NULL OR kuota <= 0 OR terpakai < kuota)
+            ORDER BY tanggal_selesai ASC, id_diskon ASC
+        ");
+        $stmt->execute([$id_produk, $hariIni, $hariIni]);
+
+        $terbaik = null;
+        $potonganTerbaik = 0.0;
+        foreach ($stmt->fetchAll() as $promo) {
+            $potongan = $this->hitung_diskon_satuan($harga, $promo);
+            if ($potongan <= 0) {
+                continue;
+            }
+            if ($terbaik === null || $potongan > $potonganTerbaik) {
+                $terbaik = $promo;
+                $potonganTerbaik = $potongan;
+            }
+        }
+
+        if ($terbaik !== null) {
+            $terbaik['potongan'] = $potonganTerbaik;
+        }
+
+        return $terbaik;
+    }
+
+    /**
+     * Menghitung potongan harga per unit dari satu baris promo.
+     * Maks. potongan (maks_diskon) membatasi nilai rupiah, bukan persentase.
+     */
+    public function hitung_diskon_satuan($harga, $diskon) {
+        $harga = (float) $harga;
+        $persen = (float) ($diskon['presentase_diskon'] ?? 0);
+        if ($harga <= 0 || $persen <= 0) {
+            return 0.0;
+        }
+
+        $potongan = $harga * $persen / 100;
+        $maks = $diskon['maks_diskon'] ?? null;
+        if ($maks !== null && (float) $maks > 0) {
+            $potongan = min($potongan, (float) $maks);
+        }
+
+        return round(max(0.0, min($potongan, $harga)), 2);
     }
 
     // [PC-07.3 & PC-07.4] Menghitung subtotal transaksi belanjaan
@@ -74,34 +144,90 @@ class TransaksiController {
             return ['status' => false, 'message' => 'Keranjang transaksi masih kosong!'];
         }
 
-        $id_akun      = (int) $id_akun;
-        $metode_bayar = (strtoupper((string) $metode_bayar) === 'QRIS') ? 'QRIS' : 'Tunai';
-        $total_harga  = round((float) $total_harga, 2);
+        $id_akun       = (int) $id_akun;
+        $metode_bayar  = (strtoupper((string) $metode_bayar) === 'QRIS') ? 'QRIS' : 'Tunai';
         $nominal_bayar = round((float) $nominal_bayar, 2);
 
         if ($id_akun <= 0) {
             return ['status' => false, 'message' => 'Akun kasir tidak valid. Silakan login kembali.'];
         }
 
-        if ($total_harga <= 0) {
-            return ['status' => false, 'message' => 'Total tagihan transaksi tidak valid!'];
-        }
-
-        if ($metode_bayar === 'Tunai' && $nominal_bayar < $total_harga) {
-            return ['status' => false, 'message' => 'Nominal pembayaran tunai kurang dari total tagihan!'];
-        }
-
-        if ($metode_bayar === 'QRIS') {
-            // Pembayaran QRIS selalu lunas sesuai nominal tagihan.
-            $nominal_bayar = $total_harga;
-        }
-
-        $kembalian = ($metode_bayar === 'Tunai')
-            ? max(0, $nominal_bayar - $total_harga)
-            : 0;
-
         try {
             $this->db->beginTransaction();
+
+            // Harga, HPP, dan promo selalu diambil ulang dari master data.
+            // Nilai diskon dari keranjang/session tidak dipercaya agar tidak bisa dimanipulasi.
+            $stmtProduk = $this->db->prepare("
+                SELECT nama_produk, harga_jual, harga_modal
+                FROM produk
+                WHERE id_produk = ? AND status_aktif = 1
+            ");
+
+            $detailItems  = [];
+            $subtotalKotor = 0.0;
+
+            foreach ($items as $item) {
+                $id_produk = (int) ($item['id_produk'] ?? 0);
+                $qty       = (int) ($item['qty'] ?? 0);
+
+                if ($qty <= 0) {
+                    continue;
+                }
+
+                $stmtProduk->execute([$id_produk]);
+                $produk = $stmtProduk->fetch();
+
+                if (!$produk) {
+                    throw new Exception("Produk dengan ID {$id_produk} tidak ditemukan atau sudah nonaktif.");
+                }
+
+                $harga = round((float) $produk['harga_jual'], 2);
+                if ($harga <= 0) {
+                    throw new Exception("Harga jual produk '{$produk['nama_produk']}' tidak valid.");
+                }
+
+                $promo    = $this->get_diskon_aktif($id_produk, $harga);
+                $diskon   = $promo !== null ? (float) $promo['potongan'] : 0.0;
+                $subtotal = round(max(0, $harga - $diskon) * $qty, 2);
+
+                $detailItems[] = [
+                    'id_produk'  => $id_produk,
+                    'nama'       => (string) $produk['nama_produk'],
+                    'qty'        => $qty,
+                    'harga_jual' => $harga,
+                    'hpp'        => (float) $produk['harga_modal'],
+                    'diskon'     => $diskon,
+                    'subtotal'   => $subtotal,
+                    'promo'      => $promo,
+                ];
+
+                $subtotalKotor += round($harga * $qty, 2);
+            }
+
+            if ($detailItems === []) {
+                throw new Exception('Tidak ada item valid untuk diproses.');
+            }
+
+            $total_harga   = round(array_sum(array_column($detailItems, 'subtotal')), 2);
+            $subtotalKotor = round($subtotalKotor, 2);
+            $total_diskon  = round(max(0, $subtotalKotor - $total_harga), 2);
+
+            if ($total_harga <= 0) {
+                throw new Exception('Total tagihan transaksi tidak valid!');
+            }
+
+            if ($metode_bayar === 'Tunai' && $nominal_bayar < $total_harga) {
+                throw new Exception('Nominal pembayaran tunai kurang dari total tagihan!');
+            }
+
+            if ($metode_bayar === 'QRIS') {
+                // Pembayaran QRIS selalu lunas sesuai nominal tagihan.
+                $nominal_bayar = $total_harga;
+            }
+
+            $kembalian = ($metode_bayar === 'Tunai')
+                ? max(0, $nominal_bayar - $total_harga)
+                : 0;
 
             // 1. Simpan transaksi induk beserta informasi pembayaran
             $stmt = $this->db->prepare("
@@ -111,7 +237,7 @@ class TransaksiController {
             $stmt->execute([$id_akun, $total_harga, $metode_bayar, $nominal_bayar, $kembalian]);
             $id_transaksi = (int) $this->db->lastInsertId();
 
-            // 2. Simpan detail item dan kurangi stok
+            // 2. Simpan detail item, kurangi stok, dan catat pemakaian promo
             $stmtDetail = $this->db->prepare("
                 INSERT INTO detail_penjualan (id_transaksi, id_produk, jumlah, harga_jual, hpp, subtotal)
                 VALUES (?, ?, ?, ?, ?, ?)
@@ -128,66 +254,56 @@ class TransaksiController {
                 VALUES (?, 'Keluar', ?, ?, {$this->nowExpression()})
             ");
 
-            $stmtProduk = $this->db->prepare("SELECT nama_produk, harga_modal FROM produk WHERE id_produk = ?");
+            $stmtPromo = $this->db->prepare("
+                UPDATE diskon
+                SET terpakai = terpakai + ?, updated_at = {$this->nowExpression()}
+                WHERE id_diskon = ?
+            ");
 
-            foreach ($items as $item) {
-                $id_produk = (int) $item['id_produk'];
-                $qty       = (int) $item['qty'];
-                $harga     = (float) $item['harga_jual'];
-                $diskon    = isset($item['diskon']) ? (float) $item['diskon'] : 0.0;
-
-                if ($qty <= 0) {
-                    continue;
-                }
-
-                $stmtProduk->execute([$id_produk]);
-                $produk = $stmtProduk->fetch();
-
-                if (!$produk) {
-                    throw new Exception("Produk dengan ID {$id_produk} tidak ditemukan.");
-                }
-
-                // HPP memakai harga modal asli produk agar laporan laba akurat
-                $hpp = isset($item['harga_modal']) && $item['harga_modal'] !== null
-                    ? (float) $item['harga_modal']
-                    : (float) $produk['harga_modal'];
-
-                $subtotal = round(max(0, $harga - $diskon) * $qty, 2);
-
+            foreach ($detailItems as $it) {
                 $stmtDetail->execute([
                     $id_transaksi,
-                    $id_produk,
-                    $qty,
-                    $harga,
-                    $hpp,
-                    $subtotal
+                    $it['id_produk'],
+                    $it['qty'],
+                    $it['harga_jual'],
+                    $it['hpp'],
+                    $it['subtotal'],
                 ]);
 
                 // Kurangi stok; bila stok tidak cukup, seluruh transaksi dibatalkan
-                $stmtStok->execute([$qty, $id_produk, $qty]);
+                $stmtStok->execute([$it['qty'], $it['id_produk'], $it['qty']]);
                 if ($stmtStok->rowCount() === 0) {
-                    throw new Exception("Stok produk '{$produk['nama_produk']}' tidak mencukupi untuk jumlah {$qty}.");
+                    throw new Exception("Stok produk '{$it['nama']}' tidak mencukupi untuk jumlah {$it['qty']}.");
                 }
 
                 // Catat mutasi stok keluar
                 $stmtMutasi->execute([
-                    $id_produk,
-                    $qty,
-                    "Penjualan POS No Transaksi #{$id_transaksi}"
+                    $it['id_produk'],
+                    $it['qty'],
+                    "Penjualan POS No Transaksi #{$id_transaksi}",
                 ]);
+
+                // Kuota promo berkurang sesuai jumlah unit yang terjual
+                if ($it['promo'] !== null) {
+                    $stmtPromo->execute([$it['qty'], (int) $it['promo']['id_diskon']]);
+                }
             }
 
             $this->db->commit();
 
             return [
-                'status'       => true,
-                'id_transaksi' => $id_transaksi,
-                'metode_bayar' => $metode_bayar,
+                'status'        => true,
+                'id_transaksi'  => $id_transaksi,
+                'metode_bayar'  => $metode_bayar,
                 'nominal_bayar' => $nominal_bayar,
-                'kembalian'    => $kembalian,
-                'message'      => 'Transaksi penjualan berhasil diproses dan disimpan!'
+                'kembalian'     => $kembalian,
+                'items'         => $detailItems,
+                'subtotal'      => $subtotalKotor,
+                'total_diskon'  => $total_diskon,
+                'total_harga'   => $total_harga,
+                'message'       => 'Transaksi penjualan berhasil diproses dan disimpan!',
             ];
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
             }

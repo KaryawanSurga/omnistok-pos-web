@@ -18,6 +18,71 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+/**
+ * Menyegarkan harga, stok, dan promo setiap item keranjang dari master data.
+ * Diskon selalu dihitung server (bukan dari input pengguna) agar konsisten
+ * dengan promo yang aktif di menu Kelola Diskon.
+ *
+ * @param array<int|string, array<string, mixed>> $cart
+ * @return array<int, array<string, mixed>>
+ */
+function sinkronkanKeranjang(PDO $db, TransaksiController $trx, array $cart): array
+{
+    if ($cart === []) {
+        return [];
+    }
+
+    $stmt = $db->prepare("
+        SELECT p.id_produk, p.nama_produk, p.harga_jual, p.harga_modal,
+               COALESCE(SUM(s.jumlah_stok), 0) AS stok
+        FROM produk p
+        LEFT JOIN stok s ON s.id_produk = p.id_produk
+        WHERE p.id_produk = ? AND p.status_aktif = 1
+        GROUP BY p.id_produk
+    ");
+
+    $hasil = [];
+    foreach ($cart as $id => $item) {
+        $stmt->execute([(int) $id]);
+        $row = $stmt->fetch();
+        if ($row === false) {
+            continue; // produk dihapus/dinonaktifkan
+        }
+
+        $stok = (int) $row['stok'];
+        if ($stok <= 0) {
+            continue; // stok habis: keluarkan dari keranjang
+        }
+
+        $qty = max(1, (int) ($item['qty'] ?? 1));
+        if ($qty > $stok) {
+            $qty = $stok;
+        }
+
+        $harga = (float) $row['harga_jual'];
+        $promo = $trx->get_diskon_aktif((int) $row['id_produk'], $harga);
+
+        $hasil[(int) $row['id_produk']] = [
+            'id_produk'   => (int) $row['id_produk'],
+            'sku'         => 'PRD-00' . $row['id_produk'],
+            'nama'        => (string) $row['nama_produk'],
+            'harga'       => $harga,
+            'harga_modal' => (float) $row['harga_modal'],
+            'qty'         => $qty,
+            'diskon'      => $promo !== null ? (float) $promo['potongan'] : 0.0,
+            'promo'       => $promo !== null ? [
+                'id_diskon' => (int) $promo['id_diskon'],
+                'kode'      => (string) ($promo['kode_diskon'] ?? ''),
+                'nama'      => (string) $promo['nama_diskon'],
+                'persen'    => (float) $promo['presentase_diskon'],
+            ] : null,
+            'stok'        => $stok,
+        ];
+    }
+
+    return $hasil;
+}
+
 $message = null;
 $messageType = 'info';
 $strukData = null;
@@ -39,30 +104,25 @@ if (!empty($_SESSION['pos_struk'])) {
 if (!isset($_SESSION['pos_cart'])) {
     $_SESSION['pos_cart'] = [];
     $produkAwal = $db->query("
-        SELECT p.*, COALESCE(SUM(s.jumlah_stok), 0) AS stok
+        SELECT p.id_produk, COALESCE(SUM(s.jumlah_stok), 0) AS stok
         FROM produk p
         LEFT JOIN stok s ON p.id_produk = s.id_produk
+        WHERE p.status_aktif = 1
         GROUP BY p.id_produk
         ORDER BY p.id_produk ASC
         LIMIT 3
     ")->fetchAll();
 
+    $awal = [];
     foreach ($produkAwal as $p) {
-        $stokAwal = (int) $p['stok'];
-        if ($stokAwal <= 0) {
-            continue;
+        if ((int) $p['stok'] > 0) {
+            $awal[(int) $p['id_produk']] = ['qty' => 1];
         }
-        $_SESSION['pos_cart'][$p['id_produk']] = [
-            'id_produk'   => (int) $p['id_produk'],
-            'sku'         => 'PRD-00' . $p['id_produk'],
-            'nama'        => $p['nama_produk'],
-            'harga'       => (float) $p['harga_jual'],
-            'harga_modal' => (float) $p['harga_modal'],
-            'qty'         => 1,
-            'diskon'      => 0,
-            'stok'        => $stokAwal,
-        ];
     }
+    $_SESSION['pos_cart'] = sinkronkanKeranjang($db, $trx, $awal);
+} else {
+    // Harga/promo bisa berubah sejak item ditambahkan: segarkan sebelum dipakai.
+    $_SESSION['pos_cart'] = sinkronkanKeranjang($db, $trx, $_SESSION['pos_cart']);
 }
 
 // Handle cart actions
@@ -75,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             SELECT p.*, COALESCE(SUM(s.jumlah_stok), 0) AS stok
             FROM produk p
             LEFT JOIN stok s ON p.id_produk = s.id_produk
-            WHERE p.id_produk = ?
+            WHERE p.id_produk = ? AND p.status_aktif = 1
             GROUP BY p.id_produk
         ");
         $stmtP->execute([$pId]);
@@ -85,32 +145,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stokTersedia = (int) $p['stok'];
             $qtySekarang  = isset($_SESSION['pos_cart'][$pId]) ? (int) $_SESSION['pos_cart'][$pId]['qty'] : 0;
 
-            if ($qtySekarang + 1 > $stokTersedia) {
+            if ($stokTersedia <= 0) {
+                $message = "Stok '{$p['nama_produk']}' sedang habis.";
+                $messageType = 'warning';
+            } elseif ($qtySekarang + 1 > $stokTersedia) {
                 $message = "Stok '{$p['nama_produk']}' tidak mencukupi (tersedia {$stokTersedia} pcs).";
                 $messageType = 'warning';
             } else {
-                if (isset($_SESSION['pos_cart'][$pId])) {
-                    $_SESSION['pos_cart'][$pId]['qty']      = $qtySekarang + 1;
-                    $_SESSION['pos_cart'][$pId]['stok']     = $stokTersedia;
-                    $_SESSION['pos_cart'][$pId]['harga']    = (float) $p['harga_jual'];
-                    $_SESSION['pos_cart'][$pId]['harga_modal'] = (float) $p['harga_modal'];
-                } else {
-                    $_SESSION['pos_cart'][$pId] = [
-                        'id_produk'   => (int) $p['id_produk'],
-                        'sku'         => 'PRD-00' . $p['id_produk'],
-                        'nama'        => $p['nama_produk'],
-                        'harga'       => (float) $p['harga_jual'],
-                        'harga_modal' => (float) $p['harga_modal'],
-                        'qty'         => 1,
-                        'diskon'      => 0,
-                        'stok'        => $stokTersedia,
-                    ];
+                if (!isset($_SESSION['pos_cart'][$pId])) {
+                    $_SESSION['pos_cart'][$pId] = ['id_produk' => (int) $p['id_produk'], 'qty' => 0];
                 }
-                $message = "Produk '{$p['nama_produk']}' berhasil ditambahkan ke keranjang belanja!";
+                $_SESSION['pos_cart'][$pId]['qty'] = $qtySekarang + 1;
+                $_SESSION['pos_cart'] = sinkronkanKeranjang($db, $trx, $_SESSION['pos_cart']);
+
+                $diskonInfo = '';
+                if (isset($_SESSION['pos_cart'][$pId]['diskon']) && $_SESSION['pos_cart'][$pId]['diskon'] > 0) {
+                    $diskonInfo = ' Diskon promo: -Rp ' . number_format((float) $_SESSION['pos_cart'][$pId]['diskon'], 0, ',', '.') . '/item.';
+                }
+                $message = "Produk '{$p['nama_produk']}' berhasil ditambahkan ke keranjang belanja!{$diskonInfo}";
                 $messageType = 'success';
             }
         } else {
-            $message = 'Produk tidak ditemukan.';
+            $message = 'Produk tidak ditemukan atau sudah dinonaktifkan.';
             $messageType = 'danger';
         }
     } elseif ($act === 'update_qty') {
@@ -162,7 +218,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
 
             $items = [];
-            $itemsStruk = [];
             foreach ($_SESSION['pos_cart'] as $it) {
                 $items[] = [
                     'id_produk'   => $it['id_produk'],
@@ -171,21 +226,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     'harga_modal' => $it['harga_modal'] ?? null,
                     'diskon'      => $it['diskon'] ?? 0,
                 ];
-                $itemsStruk[] = $it;
             }
 
             $hasil = $trx->simpan_transaksi($idKasir, $items, $grandTotal, $metode, $bayar);
 
             if ($hasil['status']) {
+                // Struk memakai hasil hitung server (harga & diskon final),
+                // bukan nilai keranjang yang bisa saja sudah kedaluwarsa.
+                $itemsStruk = [];
+                foreach ($hasil['items'] as $it) {
+                    $itemsStruk[] = [
+                        'nama'   => $it['nama'],
+                        'qty'    => $it['qty'],
+                        'harga'  => $it['harga_jual'],
+                        'diskon' => $it['diskon'],
+                    ];
+                }
+
                 $_SESSION['pos_struk'] = [
                     'trx_id'    => 'TRX-' . date('Ymd') . '-' . str_pad($hasil['id_transaksi'], 4, '0', STR_PAD_LEFT),
                     'waktu'     => date('d/m/Y H:i:s'),
                     'kasir'     => 'Kasir Utama',
                     'metode'    => $hasil['metode_bayar'],
                     'items'     => $itemsStruk,
-                    'subtotal'  => $subtotal,
-                    'diskon'    => $totalDiskon,
-                    'total'     => $grandTotal,
+                    'subtotal'  => $hasil['subtotal'],
+                    'diskon'    => $hasil['total_diskon'],
+                    'total'     => $hasil['total_harga'],
                     'bayar'     => $hasil['nominal_bayar'],
                     'kembalian' => $hasil['kembalian'],
                 ];
@@ -203,6 +269,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $messageType = 'danger';
         }
     }
+
+    // Sinkronkan lagi setelah aksi POST agar harga/promo di layar sesuai database.
+    $_SESSION['pos_cart'] = sinkronkanKeranjang($db, $trx, $_SESSION['pos_cart']);
 }
 
 // Hitung subtotal cart saat ini
@@ -235,7 +304,19 @@ $qrisNmid     = ($qrisCheck['nmid'] ?? '') !== ''
     : QrisController::nmid();
 $qrisImage    = QrisController::imagePath();
 
-$produkList = $db->query("SELECT * FROM produk ORDER BY nama_produk ASC")->fetchAll();
+$produkList = $db->query("SELECT * FROM produk WHERE status_aktif = 1 ORDER BY nama_produk ASC")->fetchAll();
+
+// Ringkasan promo aktif per produk untuk ditampilkan di daftar pilihan kasir
+$produkPromo = [];
+foreach ($produkList as $pr) {
+    $promoKatalog = $trx->get_diskon_aktif((int) $pr['id_produk'], (float) $pr['harga_jual']);
+    if ($promoKatalog !== null) {
+        $produkPromo[(int) $pr['id_produk']] = [
+            'nama'     => (string) $promoKatalog['nama_diskon'],
+            'potongan' => (float) $promoKatalog['potongan'],
+        ];
+    }
+}
 
 $activePage = 'transaksi_pos';
 $pageTitle = 'Transaksi Penjualan Kasir POS';
@@ -277,7 +358,7 @@ require_once __DIR__ . '/layout/header.php';
                 <option value="">🔍 Ketik Nama Produk / Scan Barcode [AUTO-FOCUS]...</option>
                 <?php foreach ($produkList as $pr): ?>
                     <option value="<?= $pr['id_produk']; ?>">
-                        PRD-00<?= $pr['id_produk']; ?> - <?= htmlspecialchars($pr['nama_produk']); ?> (Rp <?= number_format($pr['harga_jual'], 0, ',', '.'); ?>)
+                        PRD-00<?= $pr['id_produk']; ?> - <?= htmlspecialchars($pr['nama_produk']); ?> (Rp <?= number_format($pr['harga_jual'], 0, ',', '.'); ?>)<?php if (isset($produkPromo[(int) $pr['id_produk']])): ?> • Promo -Rp <?= number_format($produkPromo[(int) $pr['id_produk']]['potongan'], 0, ',', '.'); ?><?php endif; ?>
                     </option>
                 <?php endforeach; ?>
             </select>
@@ -341,8 +422,18 @@ require_once __DIR__ . '/layout/header.php';
                                 <td>
                                     <strong><?= htmlspecialchars($item['nama']); ?></strong>
                                     <div style="font-size: 0.72rem; color: var(--gray-400);">Ready: <?= $item['stok']; ?> pcs</div>
+                                    <?php if (!empty($item['promo'])): ?>
+                                        <div style="font-size: 0.72rem; color: #16a34a; font-weight: 600;">
+                                            🏷 <?= htmlspecialchars($item['promo']['nama']); ?> (<?= rtrim(rtrim(number_format((float) $item['promo']['persen'], 2, ',', '.'), '0'), ','); ?>%)
+                                        </div>
+                                    <?php endif; ?>
                                 </td>
-                                <td style="text-align: right;">Rp <?= number_format($item['harga'], 0, ',', '.'); ?></td>
+                                <td style="text-align: right;">
+                                    Rp <?= number_format($item['harga'], 0, ',', '.'); ?>
+                                    <?php if ($item['diskon'] > 0): ?>
+                                        <div style="font-size: 0.72rem; color: #16a34a;">→ Rp <?= number_format(max(0, $item['harga'] - $item['diskon']), 0, ',', '.'); ?></div>
+                                    <?php endif; ?>
+                                </td>
                                 <td style="text-align: center;">
                                     <div style="display: inline-flex; align-items: center; gap: 4px;">
                                         <form method="POST" action="transaksi_pos.php" style="display:inline; margin:0;">
@@ -362,6 +453,9 @@ require_once __DIR__ . '/layout/header.php';
                                 </td>
                                 <td style="text-align: right; color: #dc2626;">
                                     <?= ($item['diskon'] > 0) ? '-Rp ' . number_format($item['diskon'] * $item['qty'], 0, ',', '.') : '-'; ?>
+                                    <?php if ($item['diskon'] > 0): ?>
+                                        <div style="font-size: 0.72rem; color: var(--gray-400);">@ Rp <?= number_format($item['diskon'], 0, ',', '.'); ?>/item</div>
+                                    <?php endif; ?>
                                 </td>
                                 <td style="text-align: right; font-weight: 700;">
                                     Rp <?= number_format($sub, 0, ',', '.'); ?>

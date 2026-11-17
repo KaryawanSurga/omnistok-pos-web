@@ -34,6 +34,7 @@ class PeringatanStokController {
                 END AS status_stok
             FROM produk p
             LEFT JOIN stok s ON p.id_produk = s.id_produk
+            WHERE p.status_aktif = 1
             GROUP BY p.id_produk, p.nama_produk, p.kategori, p.harga_jual
             HAVING COALESCE(SUM(s.jumlah_stok), 0) <= COALESCE(MIN(s.batas_minimum), 5)
             ORDER BY total_stok ASC, p.nama_produk ASC

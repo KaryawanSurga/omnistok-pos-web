@@ -69,6 +69,7 @@ $stokData = $db->query("
            COALESCE(SUM(s.jumlah_stok), 0) as stok_buku
     FROM produk p
     LEFT JOIN stok s ON p.id_produk = s.id_produk
+    WHERE p.status_aktif = 1
     GROUP BY p.id_produk
     ORDER BY p.id_produk ASC
 ")->fetchAll();
