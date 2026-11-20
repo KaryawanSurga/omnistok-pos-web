@@ -42,9 +42,12 @@ omnistok-web/
 │   └── qris_code.png        # Barcode QRIS dinamis pembayaran kasir
 ├── config/
 │   ├── auth.php             # Sesi login, verifikasi kata sandi, CSRF & hak akses
-│   └── database.php         # Koneksi PDO (MySQL / SQLite Fallback Serverless)
+│   ├── database.php         # Koneksi PDO (MySQL / SQLite Fallback Serverless)
+│   └── helpers.php          # Helper bersama: escape, CSRF, flash, format angka/tanggal
 ├── controllers/
 │   ├── AkunController.php       # [JK-SC01] Kontroler Akun & Hak Akses
+│   ├── DiskonController.php     # [JK-SC02] Kontroler Diskon & Program Promosi
+│   ├── ProdukController.php     # [ZM-SC02] Kontroler Produk & Pembaruan Harga
 │   ├── TransaksiController.php  # [FF-SC01] Kontroler Kasir POS & Transaksi
 │   ├── PenerimaanController.php # [ZM-SC01] Kontroler Penerimaan Faktur & Stok
 │   └── MutasiStokController.php # [FW-SC01] Kontroler Mutasi Stok & Riwayat
@@ -61,10 +64,18 @@ omnistok-web/
 ├── layout/
 │   ├── header.php           # Template sidebar & top bar terpusat
 │   └── footer.php           # JavaScript interaktivitas & responsive drawer
-├── daftar_produk.php        # [UI-15 & UI-20] Katalog Master & Pembaruan Harga
+├── models/
+│   ├── AkunModel.php        # Akses data & validasi akun
+│   ├── DiskonModel.php      # Akses data & validasi diskon/promo
+│   └── ProdukModel.php      # Akses data produk, stok, batch, mutasi, riwayat harga
+├── views/
+│   ├── akun/index.php       # Markup halaman Kelola Akun
+│   ├── diskon/index.php     # Markup halaman Kelola Diskon
+│   └── produk/index.php     # Markup halaman Daftar Produk & Pembaruan Harga
+├── daftar_produk.php        # [UI-15 & UI-20] Entry point katalog & pembaruan harga
 ├── index.php                # Portal Utama & Dashboard Integrasi Kelompok 6
-├── kelola_akun.php          # [UI-02, UI-03] Kelola Akun & Hak Akses (khusus Pemilik Toko)
-├── kelola_diskon.php        # [UI-06, UI-07] Kelola Diskon & Program Promosi
+├── kelola_akun.php          # [UI-02, UI-03] Entry point Kelola Akun (khusus Pemilik Toko)
+├── kelola_diskon.php        # [UI-06, UI-07] Entry point Kelola Diskon & Promosi
 ├── laporan_mutasi.php       # [UI-01, UI-09, UI-10] Laporan Mutasi & Peringatan Stok
 ├── laporan_penjualan.php    # [UI-05] Laporan Omzet, HPP, & Laba Kotor Toko
 ├── login.php                # [UI-18] Halaman Login Terminal Otentikasi

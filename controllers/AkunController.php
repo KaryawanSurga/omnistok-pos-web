@@ -1,90 +1,185 @@
 <?php
+declare(strict_types=1);
+
+require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../models/AkunModel.php';
+
 /**
  * Kontroler: AkunController
- * Penulis: Justin Kelvin (JK - 255150407111098)
- * Referensi CD: CD-02 (Mengelola Data Akun & Akses)
- * Referensi Pseudocode: PC-2.1.01 s/d PC-2.1.05
+ * Menangani aksi tambah/ubah/hapus akun serta menyiapkan data untuk view.
  */
+final class AkunController
+{
+    private AkunModel $model;
+    private string $baseUrl;
 
-require_once __DIR__ . '/../config/database.php';
-
-class AkunController {
-    private $db;
-
-    public function __construct() {
-        $this->db = Database::getInstance();
+    public function __construct(PDO $db, string $baseUrl = 'kelola_akun.php')
+    {
+        $this->model = new AkunModel($db);
+        $this->baseUrl = $baseUrl;
     }
 
-    // [PC-2.1.03] Mengambil seluruh daftar akun pengguna
-    public function getall_akun() {
-        $stmt = $this->db->query("SELECT * FROM akun ORDER BY id_akun ASC");
-        return $stmt->fetchAll();
-    }
-
-    // [PC-2.2.03] Mengambil data detail akun berdasarkan ID
-    public function get_akun_by_id($id_akun) {
-        $stmt = $this->db->prepare("SELECT * FROM akun WHERE id_akun = ?");
-        $stmt->execute([$id_akun]);
-        return $stmt->fetch();
-    }
-
-    // [PC-2.1.01] Menambahkan akun dan hak akses baru
-    public function tambah_akun($email, $password, $hak_akses, $role) {
-        if (empty($email) || empty($password) || empty($hak_akses) || empty($role)) {
-            return ['status' => false, 'message' => 'Semua kolom formulir wajib diisi!'];
+    public function handlePost(): void
+    {
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            return;
         }
 
-        // Cek duplikasi email
-        $stmt = $this->db->prepare("SELECT id_akun FROM akun WHERE email = ?");
-        $stmt->execute([$email]);
-        if ($stmt->fetch()) {
-            return ['status' => false, 'message' => 'Email akun sudah terdaftar dalam sistem!'];
+        try {
+            verifyCsrf();
+
+            $action = (string) ($_POST['action'] ?? '');
+            $roles = AkunModel::petaRole();
+
+            if ($action === 'tambah' || $action === 'ubah') {
+                $idAkun = 0;
+                if ($action === 'ubah') {
+                    $idAkun = filter_var($_POST['id_akun'] ?? null, FILTER_VALIDATE_INT);
+                    if ($idAkun === false || $idAkun <= 0) {
+                        throw new InvalidArgumentException('ID akun yang akan diubah tidak valid.');
+                    }
+
+                    $akunLama = $this->model->cari($idAkun);
+                    if ($akunLama === false) {
+                        throw new InvalidArgumentException('Akun yang akan diubah tidak ditemukan.');
+                    }
+                }
+
+                $data = AkunModel::validasi($_POST, $action === 'tambah');
+
+                $currentUserId = (int) (auth_user()['id_akun'] ?? 0);
+                if ($action === 'ubah' && $idAkun === $currentUserId && (int) $data['status_aktif'] !== 1) {
+                    throw new InvalidArgumentException('Anda tidak dapat menonaktifkan akun yang sedang digunakan.');
+                }
+
+                // Email harus unik, kecuali untuk akun yang sedang diubah.
+                if ($this->model->emailDipakai($data['email'], $idAkun)) {
+                    throw new InvalidArgumentException('Email akun sudah terdaftar dalam sistem.');
+                }
+
+                $hakAkses = $roles[$data['role']]['hak'];
+
+                if ($action === 'tambah') {
+                    $this->model->tambah($data, $hakAkses);
+
+                    redirectWithFlash(
+                        'success',
+                        "Akun '{$data['nama_lengkap']}' ({$data['role']}) berhasil ditambahkan.",
+                        $this->baseUrl
+                    );
+                }
+
+                $this->model->ubah($idAkun, $data, $hakAkses);
+
+                if ($idAkun === $currentUserId) {
+                    $_SESSION['auth_user']['email']        = $data['email'];
+                    $_SESSION['auth_user']['nama_lengkap'] = $data['nama_lengkap'];
+                    $_SESSION['auth_user']['role']         = $data['role'];
+                    $_SESSION['auth_user']['hak_akses']    = $hakAkses;
+                }
+
+                redirectWithFlash('success', "Akun '{$data['nama_lengkap']}' berhasil diperbarui.", $this->baseUrl);
+            }
+
+            if ($action === 'hapus') {
+                $idAkun = filter_var($_POST['id_akun'] ?? null, FILTER_VALIDATE_INT);
+                if ($idAkun === false || $idAkun <= 0) {
+                    throw new InvalidArgumentException('ID akun yang akan dihapus tidak valid.');
+                }
+
+                $akun = $this->model->cari($idAkun);
+                if ($akun === false) {
+                    throw new InvalidArgumentException('Akun yang akan dihapus tidak ditemukan.');
+                }
+
+                if ($idAkun === (int) (auth_user()['id_akun'] ?? 0)) {
+                    throw new InvalidArgumentException('Anda tidak dapat menghapus akun yang sedang digunakan.');
+                }
+
+                if ($akun['role'] === 'Pemilik Toko' && $this->model->jumlahOwner() <= 1) {
+                    throw new InvalidArgumentException('Akun Pemilik Toko terakhir tidak boleh dihapus.');
+                }
+
+                if ($this->model->punyaTransaksi($idAkun)) {
+                    throw new InvalidArgumentException(
+                        'Akun tidak bisa dihapus karena memiliki riwayat transaksi. Nonaktifkan akun tersebut sebagai gantinya.'
+                    );
+                }
+
+                $this->model->hapus($idAkun);
+
+                redirectWithFlash(
+                    'success',
+                    "Akun '" . namaTampilAkun($akun) . "' berhasil dihapus.",
+                    $this->baseUrl
+                );
+            }
+
+            throw new InvalidArgumentException('Aksi yang diminta tidak dikenali.');
+        } catch (InvalidArgumentException $e) {
+            redirectWithFlash('danger', $e->getMessage(), $this->baseUrl);
+        } catch (Throwable $e) {
+            error_log('[kelola_akun] ' . $e->getMessage());
+            redirectWithFlash('danger', 'Gagal memproses data akun: ' . $e->getMessage(), $this->baseUrl);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function index(): array
+    {
+        $flash = ambilFlash();
+        $roles = AkunModel::petaRole();
+        $akunList = $this->model->semua();
+
+        $roleCount = ['owner' => 0, 'kasir' => 0, 'stok' => 0, 'lain' => 0];
+        $statusCount = ['aktif' => 0, 'nonaktif' => 0];
+        $akunData = [];
+
+        foreach ($akunList as $akun) {
+            $filterRole = $roles[$akun['role']]['filter'] ?? 'lain';
+            $roleCount[$filterRole]++;
+            $statusCount[(int) $akun['status_aktif'] === 1 ? 'aktif' : 'nonaktif']++;
+
+            $nama = namaTampilAkun($akun);
+            $akunData[(int) $akun['id_akun']] = [
+                'id_akun' => (int) $akun['id_akun'],
+                'nama_lengkap' => $nama,
+                'email' => (string) $akun['email'],
+                'role' => (string) $akun['role'],
+                'status_aktif' => (int) $akun['status_aktif'],
+                'inisial' => inisialNama($nama),
+            ];
         }
 
-        $password_hash = password_hash($password, PASSWORD_BCRYPT);
-        $stmt = $this->db->prepare("
-            INSERT INTO akun (email, password_hash, hak_akses, role, status_aktif, last_login_time)
-            VALUES (?, ?, ?, ?, 1, NULL)
-        ");
-        $success = $stmt->execute([$email, $password_hash, $hak_akses, $role]);
+        $totalAkun = count($akunList);
+        $lastOwnerId = null;
+        if ($roleCount['owner'] === 1) {
+            foreach ($akunList as $akun) {
+                if ($akun['role'] === 'Pemilik Toko') {
+                    $lastOwnerId = (int) $akun['id_akun'];
+                    break;
+                }
+            }
+        }
 
         return [
-            'status' => $success,
-            'message' => $success ? 'Akun pengguna berhasil ditambahkan!' : 'Gagal menyimpan data akun.'
-        ];
-    }
-
-    // [PC-2.2.04] Memperbarui informasi akun dan hak akses
-    public function ubah_akun($id_akun, $email, $hak_akses, $role, $status_aktif) {
-        if (empty($id_akun) || empty($email) || empty($hak_akses) || empty($role)) {
-            return ['status' => false, 'message' => 'Data pembaharuan akun tidak lengkap!'];
-        }
-
-        $stmt = $this->db->prepare("
-            UPDATE akun 
-            SET email = ?, hak_akses = ?, role = ?, status_aktif = ? 
-            WHERE id_akun = ?
-        ");
-        $success = $stmt->execute([$email, $hak_akses, $role, $status_aktif, $id_akun]);
-
-        return [
-            'status' => $success,
-            'message' => $success ? 'Data akun berhasil diperbarui!' : 'Gagal memperbarui data akun.'
-        ];
-    }
-
-    // [PC-2.3.02] Menghapus data akun pengguna dari sistem
-    public function hapus_akun($id_akun) {
-        if (empty($id_akun)) {
-            return ['status' => false, 'message' => 'ID Akun tidak valid!'];
-        }
-
-        $stmt = $this->db->prepare("DELETE FROM akun WHERE id_akun = ?");
-        $success = $stmt->execute([$id_akun]);
-
-        return [
-            'status' => $success,
-            'message' => $success ? 'Akun berhasil dihapus dari sistem!' : 'Gagal menghapus akun.'
+            'flash' => $flash,
+            'roles' => $roles,
+            'akunList' => $akunList,
+            'roleCount' => $roleCount,
+            'statusCount' => $statusCount,
+            'akunData' => $akunData,
+            'totalAkun' => $totalAkun,
+            'lastOwnerId' => $lastOwnerId,
+            'jsonFlags' => JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE,
+            'activePage' => 'kelola_akun',
+            'pageTitle' => 'Kelola Akun & Hak Akses Pengguna',
+            'moduleBreadcrumb' => 'USER & SETTINGS / HAK AKSES PENGGUNA',
+            'userName' => 'Ferdyansah',
+            'userRole' => 'Pemilik Toko (Owner)',
+            'userInitials' => 'FF',
         ];
     }
 }
