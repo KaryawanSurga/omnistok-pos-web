@@ -97,7 +97,7 @@ class ReportPdfHelper {
             $this->pages[$i] .= $s;
 
             // Footer left
-            $escapedLeft = $this->escape('OmniStok POS System • Dokumen Laporan Resmi • Penulis: Fauzi Al Wahid (FW)');
+            $escapedLeft = $this->escape('OmniStok POS & Inventory Management System • Dokumen Laporan Resmi');
             $sLeft = "q\n0.45 0.45 0.45 rg\nBT\n/F1 8 Tf\n";
             $sLeft .= sprintf("1 0 0 1 %.2f %.2f Tm\n(%s) Tj\nET\nQ\n", $this->m, $footerY, $escapedLeft);
             $this->pages[$i] .= $sLeft;
@@ -184,13 +184,13 @@ class ReportPdfHelper {
         // Header Banner
         $pdf->rect($m, 805, $contentW, 52, [15, 118, 110]);
         $pdf->text('OMNISTOK POS & INVENTORY MANAGEMENT SYSTEM', $m + 14, 783, 14, true, [255, 255, 255]);
-        $pdf->text('LAPORAN PENJUALAN & LABA KOTOR [UI-05]', $m + 14, 768, 10, false, [204, 251, 241]);
+        $pdf->text('LAPORAN PENJUALAN & LABA KOTOR', $m + 14, 768, 10, false, [204, 251, 241]);
 
         // Metadata box
         $curY = 742;
         $pdf->rect($m, $curY, $contentW, 36, [248, 250, 252], [226, 232, 240]);
         $pdf->text('Periode Laporan: ' . date('d/m/Y', strtotime($tgl_mulai)) . ' s/d ' . date('d/m/Y', strtotime($tgl_akhir)), $m + 10, $curY - 14, 9, true, [15, 23, 42]);
-        $pdf->text('Penanggung Jawab: Fauzi Al Wahid (Pemilik Toko - FW)', $m + 10, $curY - 26, 8, false, [100, 116, 139]);
+        $pdf->text('Divisi: Manajemen Penjualan & Keuangan Toko', $m + 10, $curY - 26, 8, false, [100, 116, 139]);
         $pdf->text('Dicetak pada: ' . date('d/m/Y H:i') . ' WIB', $m + $contentW - 150, $curY - 14, 8, false, [100, 116, 139]);
         $pdf->text('Total Transaksi: ' . (int)($ringkasan['total_transaksi'] ?? 0) . ' Transaksi', $m + $contentW - 150, $curY - 26, 8, true, [15, 118, 110]);
 
@@ -355,13 +355,13 @@ class ReportPdfHelper {
         // Header Banner
         $pdf->rect($m, 805, $contentW, 52, [15, 118, 110]);
         $pdf->text('OMNISTOK POS & INVENTORY MANAGEMENT SYSTEM', $m + 14, 783, 14, true, [255, 255, 255]);
-        $pdf->text('LAPORAN MUTASI STOK PERSEDIAAN [UI-01]', $m + 14, 768, 10, false, [204, 251, 241]);
+        $pdf->text('LAPORAN MUTASI STOK PERSEDIAAN', $m + 14, 768, 10, false, [204, 251, 241]);
 
         // Metadata box
         $curY = 742;
         $pdf->rect($m, $curY, $contentW, 36, [248, 250, 252], [226, 232, 240]);
         $pdf->text('Periode Laporan: ' . date('d/m/Y', strtotime($tgl_mulai)) . ' s/d ' . date('d/m/Y', strtotime($tgl_akhir)), $m + 10, $curY - 14, 9, true, [15, 23, 42]);
-        $pdf->text('Penanggung Jawab: Fauzi Al Wahid (Pemilik Toko - FW)', $m + 10, $curY - 26, 8, false, [100, 116, 139]);
+        $pdf->text('Divisi: Manajemen Inventori & Gudang Persediaan', $m + 10, $curY - 26, 8, false, [100, 116, 139]);
         $pdf->text('Dicetak pada: ' . date('d/m/Y H:i') . ' WIB', $m + $contentW - 150, $curY - 14, 8, false, [100, 116, 139]);
         $pdf->text('Total Mutasi: ' . (int)($hasilMutasi['total_data'] ?? 0) . ' Catatan', $m + $contentW - 150, $curY - 26, 8, true, [15, 118, 110]);
 

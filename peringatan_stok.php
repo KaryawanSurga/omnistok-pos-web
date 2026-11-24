@@ -32,7 +32,7 @@ require_once __DIR__ . '/layout/header.php';
 <div class="page-title-box">
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
         <div>
-            <h1 class="page-title">Pusat Peringatan Dini Persediaan </h1>
+            <h1 class="page-title">Pusat Peringatan Dini Persediaan</h1>
             <p class="page-subtitle">Monitoring otomatis stok menipis di bawah ambang batas dan kedaluwarsa batch produk.</p>
         </div>
         <div style="display: flex; gap: 8px;">
@@ -105,7 +105,7 @@ require_once __DIR__ . '/layout/header.php';
     <div class="card-box">
         <div class="card-box-header">
             <div>
-                <h3 class="card-box-title">Daftar Produk Di Bawah Batas Ambang Minimum [UI-09]</h3>
+                <h3 class="card-box-title">Daftar Produk Di Bawah Batas Ambang Minimum</h3>
                 <span style="font-size: 0.78rem; color: var(--gray-400);">
                     Daftar SKU yang memerlukan restock ulang atau konfirmasi opname fisik.
                 </span>
