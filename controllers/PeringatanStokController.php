@@ -4,42 +4,33 @@
  * Penulis: Fauzi Al Wahid (FW - 255150400111016)
  * Referensi CD: CD-05 (Melihat Peringatan Stok Menipis) & CD-06 (Melihat Peringatan Barang Kadaluwarsa)
  * Hak Akses: Pemilik Toko (owner) & Petugas Stok (gudang)
+ * Arsitektur MVC:
+ * - Model : models/PeringatanStokModel.php
+ * - View  : views/peringatan_stok/index.php
  */
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../models/PeringatanStokModel.php';
 
-class PeringatanStokController {
-    private $db;
+class PeringatanStokController
+{
+    private PeringatanStokModel $model;
 
-    public function __construct() {
-        $this->db = Database::getInstance();
+    public function __construct(?PDO $db = null)
+    {
+        if (date_default_timezone_get() !== 'Asia/Jakarta') {
+            date_default_timezone_set('Asia/Jakarta');
+        }
+        $pdo = $db ?? Database::getInstance();
+        $this->model = new PeringatanStokModel($pdo);
     }
 
     /**
      * [UC-05] Mendapatkan daftar produk yang stok fisiknya menipis atau habis di bawah batas minimum
      */
-    public function get_peringatan_stok_menipis() {
-        $stmt = $this->db->query("
-            SELECT 
-                p.id_produk,
-                p.nama_produk,
-                p.kategori,
-                p.harga_jual,
-                COALESCE(SUM(s.jumlah_stok), 0) AS total_stok,
-                COALESCE(MIN(s.batas_minimum), 5) AS batas_minimum,
-                CASE 
-                    WHEN COALESCE(SUM(s.jumlah_stok), 0) = 0 THEN 'HABIS'
-                    WHEN COALESCE(SUM(s.jumlah_stok), 0) <= COALESCE(MIN(s.batas_minimum), 5) THEN 'MENIPIS'
-                    ELSE 'AMAN'
-                END AS status_stok
-            FROM produk p
-            LEFT JOIN stok s ON p.id_produk = s.id_produk
-            WHERE p.status_aktif = 1
-            GROUP BY p.id_produk, p.nama_produk, p.kategori, p.harga_jual
-            HAVING COALESCE(SUM(s.jumlah_stok), 0) <= COALESCE(MIN(s.batas_minimum), 5)
-            ORDER BY total_stok ASC, p.nama_produk ASC
-        ");
-        $items = $stmt->fetchAll();
+    public function get_peringatan_stok_menipis(): array
+    {
+        $items = $this->model->get_stok_menipis();
 
         $totalHabis = 0;
         $totalMenipis = 0;
@@ -53,34 +44,19 @@ class PeringatanStokController {
 
         return [
             'total_peringatan' => count($items),
-            'total_habis' => $totalHabis,
-            'total_menipis' => $totalMenipis,
-            'items' => $items
+            'total_habis'      => $totalHabis,
+            'total_menipis'    => $totalMenipis,
+            'items'            => $items,
         ];
     }
 
     /**
      * [UC-06] Mendapatkan daftar batch produk yang telah kadaluwarsa atau mendekati masa kadaluwarsa (<= 90 hari)
      */
-    public function get_peringatan_kadaluwarsa() {
+    public function get_peringatan_kadaluwarsa(): array
+    {
         $today = date('Y-m-d');
-
-        $stmt = $this->db->query("
-            SELECT 
-                b.id_batch,
-                b.id_produk,
-                p.nama_produk,
-                p.kategori,
-                b.tanggal_kadaluwarsa,
-                COALESCE(SUM(s.jumlah_stok), 0) AS sisa_stok,
-                COALESCE(MIN(s.lokasi_stok), 'Gudang Utama') AS lokasi_stok
-            FROM batch_produk b
-            JOIN produk p ON b.id_produk = p.id_produk
-            LEFT JOIN stok s ON b.id_batch = s.id_batch
-            GROUP BY b.id_batch, b.id_produk, p.nama_produk, p.kategori, b.tanggal_kadaluwarsa
-            ORDER BY b.tanggal_kadaluwarsa ASC
-        ");
-        $raw = $stmt->fetchAll();
+        $raw = $this->model->get_batch_produk();
 
         $items = [];
         $totalExpired = 0;
@@ -89,7 +65,7 @@ class PeringatanStokController {
 
         foreach ($raw as $row) {
             $tglExp = $row['tanggal_kadaluwarsa'];
-            $diffDays = (int)round((strtotime($tglExp) - strtotime($today)) / 86400);
+            $diffDays = (int) round((strtotime($tglExp) - strtotime($today)) / 86400);
 
             if ($diffDays < 0) {
                 $status = 'KADALUWARSA';
@@ -114,19 +90,38 @@ class PeringatanStokController {
             }
 
             $row['selisih_hari'] = $diffDays;
-            $row['status_exp'] = $status;
-            $row['label_exp'] = $label;
-            $row['pill_class'] = $pillClass;
+            $row['status_exp']   = $status;
+            $row['label_exp']    = $label;
+            $row['pill_class']   = $pillClass;
 
             $items[] = $row;
         }
 
         return [
-            'total_batch' => count($items),
+            'total_batch'   => count($items),
             'total_expired' => $totalExpired,
             'total_warning' => $totalWarning,
-            'total_safe' => $totalSafe,
-            'items' => $items
+            'total_safe'    => $totalSafe,
+            'items'         => $items,
+        ];
+    }
+
+    /**
+     * Menyiapkan seluruh data untuk View `views/peringatan_stok/index.php`.
+     */
+    public function index(array $query = []): array
+    {
+        $stokMenipisData = $this->get_peringatan_stok_menipis();
+        $kadaluwarsaData = $this->get_peringatan_kadaluwarsa();
+        $activeTab = (isset($query['tab']) && $query['tab'] === 'kadaluwarsa') ? 'kadaluwarsa' : 'menipis';
+
+        return [
+            'activePage'       => 'peringatan_stok',
+            'pageTitle'        => 'Peringatan Stok & Kadaluwarsa',
+            'moduleBreadcrumb' => 'INVENTORY & REPORTS / NOTIFIKASI PERINGATAN DINI',
+            'stokMenipisData'  => $stokMenipisData,
+            'kadaluwarsaData'  => $kadaluwarsaData,
+            'activeTab'        => $activeTab,
         ];
     }
 }
