@@ -52,7 +52,7 @@ require dirname(__DIR__, 2) . '/layout/header.php';
 <!-- PERCABANGAN ALT SEQUENCE DIAGRAM SD-01 -->
 <?php if (!$isValid): ?>
     <!-- ALT 1: [periode tidak valid] -> tampilkan_pesan_kesalahan(pesan) -->
-    <div class="alert alert-danger" style="background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 14px 18px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px;">
+    <div class="alert alert-danger" style="background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 14px 18px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; justify-content: flex-start; gap: 12px;">
         <span style="font-size: 1.1rem; font-weight: bold; background: #fee2e2; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; color: #b91c1c; flex-shrink: 0;">!</span>
         <div>
             <strong>Periode Tanggal Tidak Valid!</strong>
@@ -63,7 +63,7 @@ require dirname(__DIR__, 2) . '/layout/header.php';
     <!-- ALT 2: [periode valid] -->
     <?php if (empty($hasilMutasi['data'])): ?>
         <!-- SUB-ALT 2A: [data mutasi kosong] -> tampilkan_pesan_data_kosong() -->
-        <div class="alert alert-warning" style="background: #fffbeb; border: 1px solid #fef3c7; color: #92400e; padding: 14px 18px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px;">
+        <div class="alert alert-warning" style="background: #fffbeb; border: 1px solid #fef3c7; color: #92400e; padding: 14px 18px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; justify-content: flex-start; gap: 12px;">
             <span style="font-size: 1.1rem; font-weight: bold; background: #fef3c7; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; color: #b45309; flex-shrink: 0;">i</span>
             <div>
                 <strong>Data Mutasi Stok Tidak Tersedia</strong>
